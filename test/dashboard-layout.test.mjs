@@ -12,6 +12,17 @@ test("대시보드 보조 영역은 데스크톱에서 기존 폭의 절반 이�
   assert.match(css, /@media \(max-width: 560px\)[\s\S]*?\.dashboard-side-vertical \{ grid-template-columns: 1fr; \}/);
 });
 
+test("상단 바와 OVERVIEW 영역은 대시보드 본문 공간을 넓히도록 압축된다", async () => {
+  const css = await readFile(new URL("public/styles.css", root), "utf8");
+  assert.match(css, /\.topbar \{[^}]*height:\s*54px/);
+  assert.match(css, /\.page-content\.dashboard-page \{[^}]*calc\(100dvh - 205px\)[^}]*padding-top:\s*14px/);
+  assert.match(css, /\.dashboard-page \.page-heading \{[^}]*align-items:\s*center[^}]*margin-bottom:\s*12px/);
+  assert.match(css, /\.dashboard-page \.page-heading \.eyebrow \{[^}]*font-size:\s*8px/);
+  assert.match(css, /\.dashboard-page \.page-heading h1 \{[^}]*font-size:\s*23px/);
+  assert.match(css, /\.dashboard-page \.live-status \{[^}]*padding:\s*6px 9px/);
+  assert.match(css, /@media \(max-width: 560px\)[\s\S]*?\.dashboard-page \.page-heading \{ gap: 8px; \}/);
+});
+
 test("캘린더 일정은 Google 캘린더 고유 배경색과 글자색을 사용한다", async () => {
   const [css, app] = await Promise.all([
     readFile(new URL("public/styles.css", root), "utf8"),
