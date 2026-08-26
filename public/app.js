@@ -1,14 +1,14 @@
 const menuGroups = [
-  { label: "WORKSPACE", items: [
+  { id: "workspace", label: "WORKSPACE", items: [
     { id: "dashboard", icon: "▦", title: "통합 대시보드" }
   ]},
-  { label: "BUSINESS", items: [
+  { id: "business", label: "BUSINESS", items: [
     { id: "management", icon: "▰", title: "경영사업본부", children: [
       { id: "management_ar", title: "미수채권 관리시스템", url: "https://medprk-ar-dashboard.mycafe24.ai/" },
       { id: "management_hr", title: "HR", url: "https://medprk-medpark-hr-maps.mycafe24.ai/" },
       { id: "management_routine", title: "경영 루틴 업무 시스템", url: null }
     ]},
-    { id: "marketing", icon: "◫", title: "마케팅사업본부", children: [
+    { id: "marketing", icon: "◫", title: "마케팅 사업본부", children: [
       { id: "marketing_allo", title: "국내영업 · MedPark-Allo", url: "https://medprk-medpark-allo.mycafe24.ai/" },
       { id: "marketing_dental", title: "국내영업 · 덴탈", url: null },
       { id: "marketing_medical", title: "국내영업 · 메디컬", url: null },
@@ -19,12 +19,12 @@ const menuGroups = [
       { id: "technology_focus", title: "기술부 중점 업무", url: "https://medprk-medpark-tech-conference-maps.mycafe24.ai/" }
     ]}
   ]},
-  { label: "COLLABORATION", items: [
+  { id: "collaboration", label: "COLLABORATION", items: [
     { id: "amarans", icon: "A", title: "아마란스", url: "https://gw.medpark.kr/" },
-    { id: "meetings", icon: "☷", title: "회의록" }
+    { id: "meetings", icon: "☷", title: "회의록" },
+    { id: "calendar", icon: "□", title: "일정(캘린더)" }
   ]},
-  { label: "ADMIN", items: [
-    { id: "calendar", icon: "□", title: "일정(캘린더)" },
+  { id: "admin", label: "ADMIN", items: [
     { id: "admin", icon: "⚙", title: "포털 관리" }
   ]}
 ];
@@ -50,14 +50,25 @@ let quickLinks = [];
 let quickLinkCatalog = [];
 
 const builtInEditableMenuIds = new Set([
+  "group_workspace", "group_business", "group_collaboration",
   "management", "management_ar", "management_hr", "management_routine",
   "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
   "technology", "technology_focus", "amarans", "meetings", "calendar"
 ]);
 const editableTopMenuItems = () => menuGroups.flatMap((group) => group.items).filter((item) => item.id !== "dashboard" && item.id !== "admin");
 const editableMenuItems = () => editableTopMenuItems().flatMap((item) => [item, ...(item.children || [])]);
+const configurableMenuGroups = () => menuGroups.filter((group) => group.id !== "admin");
 
-const applyMenuConfig = ({ labels = {}, customItems = [] } = {}) => {
+const sortMenuItems = (items, scope, order = {}) => items
+  .map((item, index) => ({ item, index }))
+  .sort((a, b) => {
+    const aOrder = order[a.item.id]?.parent_id === scope ? Number(order[a.item.id].item_order) : 1000 + Number(a.item.item_order ?? a.index);
+    const bOrder = order[b.item.id]?.parent_id === scope ? Number(order[b.item.id].item_order) : 1000 + Number(b.item.item_order ?? b.index);
+    return aOrder - bOrder || a.index - b.index;
+  })
+  .map(({ item }) => item);
+
+const applyMenuConfig = ({ labels = {}, customItems = [], order = {} } = {}) => {
   menuGroups.forEach((group) => {
     group.items = group.items.filter((item) => !item.isCustom);
     group.items.forEach((item) => { if (item.children) item.children = item.children.filter((child) => !child.isCustom); });
@@ -65,13 +76,27 @@ const applyMenuConfig = ({ labels = {}, customItems = [] } = {}) => {
   editableMenuItems().forEach((item) => {
     if (typeof labels[item.id] === "string" && labels[item.id].trim()) item.title = labels[item.id].trim();
   });
-  const businessGroup = menuGroups.find((group) => group.label === "BUSINESS");
-  customItems.filter((item) => !item.parent_id).forEach((item) => businessGroup.items.push({ ...item, title: item.label, children: [], isCustom: true }));
-  customItems.filter((item) => item.parent_id).forEach((item) => {
+  configurableMenuGroups().forEach((group) => {
+    const label = labels[`group_${group.id}`];
+    if (typeof label === "string" && label.trim()) group.label = label.trim();
+  });
+  customItems.filter((item) => !item.parent_id || configurableMenuGroups().some((group) => group.id === item.parent_id)).forEach((item) => {
+    const groupId = item.parent_id || "business";
+    const group = menuGroups.find((candidate) => candidate.id === groupId);
+    if (group) group.items.push({ ...item, title: item.label, children: [], isCustom: true });
+  });
+  customItems.filter((item) => item.parent_id && !configurableMenuGroups().some((group) => group.id === item.parent_id)).forEach((item) => {
     const parent = editableTopMenuItems().find((candidate) => candidate.id === item.parent_id);
     if (!parent) return;
     if (!parent.children) parent.children = [];
     parent.children.push({ ...item, title: item.label, isCustom: true });
+  });
+  const adminGroup = menuGroups.find((group) => group.id === "admin");
+  const publicGroups = sortMenuItems(configurableMenuGroups(), "root", order);
+  menuGroups.splice(0, menuGroups.length, ...publicGroups, adminGroup);
+  configurableMenuGroups().forEach((group) => {
+    group.items = sortMenuItems(group.items, group.id, order);
+    group.items.forEach((item) => { if (item.children) item.children = sortMenuItems(item.children, item.id, order); });
   });
 };
 
@@ -182,7 +207,7 @@ $("#logout").addEventListener("click", async () => {
 });
 
 const renderNavigation = () => {
-  $("#mainNav").innerHTML = menuGroups.filter((group) => group.label !== "ADMIN" || currentUser?.role === "admin").map((group) => `
+  $("#mainNav").innerHTML = menuGroups.filter((group) => group.id !== "admin" || currentUser?.role === "admin").map((group) => `
     <section class="nav-section">
       <div class="nav-heading">${group.label}</div>
       ${group.items.map((item) => {
@@ -212,7 +237,7 @@ const renderNavigation = () => {
 };
 
 const navigate = (page) => {
-  if ((page === "admin" || page === "calendar") && currentUser?.role !== "admin") {
+  if (page === "admin" && currentUser?.role !== "admin") {
     page = "dashboard";
     showToast("관리자 전용 메뉴입니다.");
   }
@@ -225,7 +250,7 @@ const navigate = (page) => {
   $("#breadcrumbText").textContent = title;
   if (page === "dashboard") renderDashboard();
   else if (page === "admin") renderAdmin();
-  else if (page === "calendar") renderCalendarSettings();
+  else if (page === "calendar") renderCalendarPage();
   else renderPlaceholder(title, page);
   closeSidebar();
 };
@@ -384,6 +409,42 @@ const renderAdmin = () => {
   }));
 };
 
+const orderButtonsMarkup = () => `<span class="category-order-actions"><button type="button" class="category-order-move" data-direction="up" aria-label="위로 이동">↑</button><button type="button" class="category-order-move" data-direction="down" aria-label="아래로 이동">↓</button></span>`;
+
+const orderItemMarkup = (item) => `<article class="category-order-item" data-order-row data-order-id="${escapeHtml(item.id)}">
+  <div><span><i>${escapeHtml(item.icon || "◇")}</i>${escapeHtml(item.title)}</span>${orderButtonsMarkup()}</div>
+  ${(item.children || []).length ? `<div class="category-order-list nested" data-order-scope="${escapeHtml(item.id)}">${item.children.map((child) => `<article class="category-order-item child" data-order-row data-order-id="${escapeHtml(child.id)}"><div><span>${escapeHtml(child.title)}</span>${orderButtonsMarkup()}</div></article>`).join("")}</div>` : ""}
+</article>`;
+
+const menuOrderMarkup = () => `<section class="menu-order-panel">
+  <div><span class="eyebrow">MENU ORDER</span><h2>카테고리 순서 관리</h2><p>각 단계에서 위·아래 버튼으로 표시 순서를 변경합니다.</p></div>
+  <div class="category-order-list root" data-order-scope="root">${configurableMenuGroups().map((group) => `<article class="category-order-group" data-order-row data-order-id="${escapeHtml(group.id)}">
+    <header><b>${escapeHtml(group.label)}</b>${orderButtonsMarkup()}</header>
+    <div class="category-order-list" data-order-scope="${escapeHtml(group.id)}">${group.items.map(orderItemMarkup).join("")}</div>
+  </article>`).join("")}</div>
+</section>`;
+
+const moveCategoryOrder = (event) => {
+  const row = event.target.closest("[data-order-row]");
+  const list = row?.parentElement;
+  if (!row || !list?.matches("[data-order-scope]")) return;
+  if (event.currentTarget.dataset.direction === "up" && row.previousElementSibling) list.insertBefore(row, row.previousElementSibling);
+  if (event.currentTarget.dataset.direction === "down" && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row);
+};
+
+const collectMenuOrder = () => Object.fromEntries($$("[data-order-scope]").map((list) => [
+  list.dataset.orderScope,
+  [...list.children].filter((child) => child.matches("[data-order-row]")).map((child) => child.dataset.orderId)
+]));
+
+const updateMenuCreateParentOptions = () => {
+  const groupSelect = $("#menuCreateGroup");
+  const parentSelect = $("#menuCreateParent");
+  if (!groupSelect || !parentSelect) return;
+  const group = menuGroups.find((candidate) => candidate.id === groupSelect.value);
+  parentSelect.innerHTML = `<option value="">${escapeHtml(group?.label || "선택한 최상단")} 바로 아래</option>${(group?.items || []).map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)} 하위</option>`).join("")}`;
+};
+
 const renderAdminTab = (tab) => {
   const body = $("#adminBody");
   const addButton = $("#addEmployee");
@@ -405,27 +466,40 @@ const renderAdminTab = (tab) => {
     body.innerHTML = `
       <div class="menu-admin-layout">
         <form id="menuLabelsForm" class="menu-labels-form">
-          <div class="menu-manager-heading"><div><h2>카테고리 이름 관리</h2><p>최상단과 하위 카테고리 이름을 함께 수정합니다. 기존 연결 주소와 권한은 유지됩니다.</p></div><button class="button primary" type="submit">변경사항 저장</button></div>
+          <div class="menu-manager-heading"><div><h2>카테고리 이름 관리</h2><p>최상위·상위·하위 카테고리 이름과 표시 순서를 함께 관리합니다.</p></div><button class="button primary" type="submit">이름·순서 저장</button></div>
+          <section class="menu-group-name-editor">
+            <h3>최상위 카테고리</h3>
+            <div class="menu-group-name-grid">${configurableMenuGroups().map((group) => `
+              <label><span>${escapeHtml(group.id.toUpperCase())}</span><input name="group_${escapeHtml(group.id)}" value="${escapeHtml(group.label)}" minlength="1" maxlength="40" required /></label>`).join("")}
+            </div>
+          </section>
           <div class="menu-label-groups">${editableTopMenuItems().map((parent) => `
             <section class="menu-edit-group">
-              <label class="top-menu-label"><span>최상단 카테고리</span><input name="${escapeHtml(parent.id)}" value="${escapeHtml(parent.title)}" minlength="1" maxlength="40" required /></label>
+              <label class="top-menu-label"><span>상위 카테고리</span><input name="${escapeHtml(parent.id)}" value="${escapeHtml(parent.title)}" minlength="1" maxlength="40" required /></label>
               <div class="child-menu-list">${(parent.children || []).length ? parent.children.map((child) => `
                 <label><span>하위 카테고리${child.url ? ` · 연결됨` : ""}</span><input name="${escapeHtml(child.id)}" value="${escapeHtml(child.title)}" minlength="1" maxlength="40" required /></label>`).join("") : '<p class="empty-child-menu">등록된 하위 카테고리가 없습니다.</p>'}</div>
             </section>`).join("")}</div>
           <p id="menuLabelsError" class="form-error"></p>
         </form>
-        <form id="menuCreateForm" class="menu-create-form">
-          <div><span class="eyebrow">NEW CATEGORY</span><h2>카테고리 등록</h2><p>최상단 또는 선택한 카테고리 아래에 새 메뉴를 추가합니다.</p></div>
-          <label>등록 위치<select name="parent_id"><option value="">최상단 카테고리</option>${editableTopMenuItems().map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)} 하위</option>`).join("")}</select></label>
-          <label>카테고리 이름<input name="label" minlength="1" maxlength="40" placeholder="새 카테고리 이름" required /></label>
-          <label>연결 URL <small>선택 · 하위 카테고리용</small><input name="url" type="url" placeholder="https://" /></label>
-          <label>아이콘 <small>선택 · 최상단 카테고리용</small><input name="icon" maxlength="2" placeholder="◇" /></label>
-          <p id="menuCreateError" class="form-error"></p>
-          <button class="button primary full" type="submit">＋ 카테고리 등록</button>
-        </form>
+        <aside class="menu-admin-side">
+          ${menuOrderMarkup()}
+          <form id="menuCreateForm" class="menu-create-form">
+            <div><span class="eyebrow">NEW CATEGORY</span><h2>카테고리 등록</h2><p>소속 최상단을 지정한 뒤 바로 아래 또는 기존 카테고리 하위에 추가합니다. ADMIN은 고정 영역입니다.</p></div>
+            <label>최상단 카테고리<select id="menuCreateGroup" name="group_id" required>${configurableMenuGroups().map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.label)}</option>`).join("")}</select></label>
+            <label>등록 위치<select id="menuCreateParent" name="parent_id"></select></label>
+            <label>카테고리 이름<input name="label" minlength="1" maxlength="40" placeholder="새 카테고리 이름" required /></label>
+            <label>연결 URL <small>선택</small><input name="url" type="url" placeholder="https://" /></label>
+            <label>아이콘 <small>선택 · 최상단 바로 아래 등록용</small><input name="icon" maxlength="2" placeholder="◇" /></label>
+            <p id="menuCreateError" class="form-error"></p>
+            <button class="button primary full" type="submit">＋ 카테고리 등록</button>
+          </form>
+        </aside>
       </div>`;
     $("#menuLabelsForm").addEventListener("submit", saveMenuLabels);
     $("#menuCreateForm").addEventListener("submit", createMenuItem);
+    $("#menuCreateGroup").addEventListener("change", updateMenuCreateParentOptions);
+    updateMenuCreateParentOptions();
+    $$(".category-order-move").forEach((button) => button.addEventListener("click", moveCategoryOrder));
     return;
   }
   body.innerHTML = `<div class="placeholder-state compact"><div><i>${tab === "permissions" ? "◇" : "☷"}</i><h2>${tab === "permissions" ? "권한 관리" : "감사 로그"}</h2><p>이 기능은 다음 구현 단계에서 연결됩니다.</p></div></div>`;
@@ -442,12 +516,16 @@ const saveMenuLabels = async (event) => {
     const response = await fetch("/api/admin/menu", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ labels }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message);
-    applyMenuConfig(result);
+    const orderResponse = await fetch("/api/admin/menu/order", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ scopes: collectMenuOrder() }) });
+    const orderedResult = await orderResponse.json();
+    if (!orderResponse.ok) throw new Error(orderedResult.message);
+    applyMenuConfig(orderedResult);
     renderNavigation();
     $("#breadcrumbText").textContent = "포털 관리";
-    showToast("카테고리 이름이 저장되었습니다.");
+    renderAdminTab("menus");
+    showToast("카테고리 이름과 순서가 저장되었습니다.");
   } catch (error) {
-    $("#menuLabelsError").textContent = error.message || "카테고리 이름 저장에 실패했습니다.";
+    $("#menuLabelsError").textContent = error.message || "카테고리 이름과 순서 저장에 실패했습니다.";
   } finally {
     submit.disabled = false;
   }
@@ -748,9 +826,16 @@ const loadCalendarSettingsPage = async () => {
 };
 
 const renderCalendarSettings = () => {
-  pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">CONNECTED SYSTEM</span><h1>일정(캘린더)</h1><p>Google Calendar 일정 조회와 인증 방식을 관리합니다.</p></div><button id="backToDashboard" class="button secondary">대시보드로 돌아가기</button></section><section class="content-panel calendar-settings-panel"><div id="calendarSettingsHost">${currentUser?.role === "admin" ? '<div class="calendar-loading"><span class="spinner"></span><p>연결 설정을 불러오는 중입니다.</p></div>' : '<div class="placeholder-state"><div><i>□</i><h2>Google Calendar</h2><p>연결 설정은 관리자만 변경할 수 있습니다.</p></div></div>'}</div></section>`;
-  $("#backToDashboard").addEventListener("click", () => navigate("dashboard"));
+  pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">CONNECTED SYSTEM</span><h1>일정(캘린더)</h1><p>Google Calendar 일정 조회와 인증 방식을 관리합니다.</p></div><button id="backToDashboard" class="button secondary">일정으로 돌아가기</button></section><section class="content-panel calendar-settings-panel"><div id="calendarSettingsHost">${currentUser?.role === "admin" ? '<div class="calendar-loading"><span class="spinner"></span><p>연결 설정을 불러오는 중입니다.</p></div>' : '<div class="placeholder-state"><div><i>□</i><h2>Google Calendar</h2><p>연결 설정은 관리자만 변경할 수 있습니다.</p></div></div>'}</div></section>`;
+  $("#backToDashboard").addEventListener("click", () => navigate("calendar"));
   if (currentUser?.role === "admin") loadCalendarSettingsPage();
+};
+
+const renderCalendarPage = () => {
+  pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">COLLABORATION</span><h1>일정(캘린더)</h1><p>메드파크 주요 일정을 월별로 확인합니다.</p></div>${currentUser?.role === "admin" ? '<button id="openCalendarAdmin" class="button secondary">연결 설정</button>' : ""}</section><section class="panel standalone-calendar-panel"><div id="carouselBody" class="carousel-body"></div></section>`;
+  carouselMode = "calendar";
+  renderCalendarView();
+  $("#openCalendarAdmin")?.addEventListener("click", renderCalendarSettings);
 };
 
 const openSidebar = () => { $("#sidebar").classList.add("open"); $("#sidebarBackdrop").classList.add("open"); };
@@ -761,7 +846,7 @@ $("#sidebarBackdrop").addEventListener("click", closeSidebar);
 
 const setupSearch = () => {
   const draw = (query = "") => {
-    const visibleGroups = menuGroups.filter((group) => group.label !== "ADMIN" || currentUser?.role === "admin");
+    const visibleGroups = menuGroups.filter((group) => group.id !== "admin" || currentUser?.role === "admin");
     const allItems = visibleGroups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.label })));
     const items = allItems.filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
     $("#searchResults").innerHTML = items.map((item) => item.url

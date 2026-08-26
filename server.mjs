@@ -15,15 +15,26 @@ const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=u
 const staticCacheControl = (extension) => extension === ".html" ? "no-store, max-age=0" : "no-cache, max-age=0, must-revalidate";
 const dbConfig = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"].every((key) => process.env[key]);
 let pool = null;
-const memory = { users: new Map(), sessions: new Map(), audits: [], menuLabels: new Map(), customMenuItems: new Map(), quickLinks: new Map(), calendarSettings: null, calendarSelections: new Map() };
+const memory = { users: new Map(), sessions: new Map(), audits: [], menuLabels: new Map(), menuOrder: new Map(), customMenuItems: new Map(), quickLinks: new Map(), calendarSettings: null, calendarSelections: new Map() };
 const calendarRedirectUri = process.env.GOOGLE_CALENDAR_REDIRECT_URI || "https://medprk-medpark-one.mycafe24.ai/api/calendar/oauth/callback";
 const calendarScope = "https://www.googleapis.com/auth/calendar.readonly";
 const editableMenuIds = new Set([
+  "group_workspace", "group_business", "group_collaboration",
   "management", "management_ar", "management_hr", "management_routine",
   "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
   "technology", "technology_focus", "amarans", "meetings", "calendar"
 ]);
 const builtInTopMenuIds = new Set(["management", "marketing", "technology", "amarans", "meetings", "calendar"]);
+const menuGroupIds = ["workspace", "business", "collaboration"];
+const builtInMenuMembership = Object.freeze({
+  root: menuGroupIds,
+  workspace: ["dashboard"],
+  business: ["management", "marketing", "technology"],
+  collaboration: ["amarans", "meetings", "calendar"],
+  management: ["management_ar", "management_hr", "management_routine"],
+  marketing: ["marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global"],
+  technology: ["technology_focus"]
+});
 const quickLinkCatalog = Object.freeze({
   ar: { id: "ar", label: "미수채권", icon: "₩", url: "https://medprk-ar-dashboard.mycafe24.ai/" },
   hr: { id: "hr", label: "HR", icon: "♙", url: "https://medprk-medpark-hr-maps.mycafe24.ai/" },
@@ -108,6 +119,15 @@ const initDatabase = async () => {
       menu_id varchar(50) PRIMARY KEY, label varchar(40) NOT NULL,
       updated_by uuid REFERENCES users(id) ON DELETE SET NULL, updated_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS portal_app_migrations (
+      id varchar(100) PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS portal_menu_order (
+      menu_id varchar(50) PRIMARY KEY, parent_id varchar(50) NOT NULL,
+      item_order integer NOT NULL DEFAULT 0,
+      updated_by uuid REFERENCES users(id) ON DELETE SET NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
     CREATE TABLE IF NOT EXISTS portal_custom_menu_items (
       id uuid PRIMARY KEY, parent_id varchar(50), label varchar(40) NOT NULL,
       icon varchar(8), url text, item_order integer NOT NULL DEFAULT 0,
@@ -135,6 +155,26 @@ const initDatabase = async () => {
     );
     ALTER TABLE calendar_integration_calendars ADD COLUMN IF NOT EXISTS foreground_color varchar(20);
   `);
+  const menuStructureMigration = await pool.connect();
+  try {
+    await menuStructureMigration.query("BEGIN");
+    const migration = await menuStructureMigration.query("INSERT INTO portal_app_migrations (id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING id", ["20260826_menu_groups_v1"]);
+    if (migration.rowCount) {
+      const labels = {
+        group_workspace: "WORKSPACE", group_business: "BUSINESS", group_collaboration: "COLLABORATION",
+        management: "경영사업본부", marketing: "마케팅 사업본부", technology: "기술사업본부",
+        amarans: "아마란스", meetings: "회의록", calendar: "일정(캘린더)"
+      };
+      for (const [menuId, label] of Object.entries(labels)) await menuStructureMigration.query(
+        "INSERT INTO portal_menu_labels (menu_id,label) VALUES ($1,$2) ON CONFLICT (menu_id) DO UPDATE SET label=EXCLUDED.label,updated_at=now()",
+        [menuId,label]
+      );
+    }
+    await menuStructureMigration.query("COMMIT");
+  } catch (error) {
+    await menuStructureMigration.query("ROLLBACK");
+    throw error;
+  } finally { menuStructureMigration.release(); }
   const count = Number((await pool.query("SELECT count(*)::int AS count FROM users WHERE status::text = 'active' AND role::text = 'admin'")).rows[0].count);
   if (count === 0) {
     await pool.query(`INSERT INTO users (id,username,email,password_hash,name,employee_no,department,role,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [randomUUID(), "admin", null, await hashPassword("Preview123!"), "김관리", "M001", "경영지원본부", "admin", "active"]);
@@ -167,12 +207,70 @@ const listCustomMenuItems = async () => {
   return [...memory.customMenuItems.values()].sort((a, b) => a.item_order - b.item_order);
 };
 
-const getMenuConfig = async () => ({ labels: await listMenuLabels(), customItems: await listCustomMenuItems() });
+const listMenuOrder = async () => {
+  const rows = pool
+    ? (await pool.query("SELECT menu_id,parent_id,item_order FROM portal_menu_order ORDER BY parent_id,item_order")).rows
+    : [...memory.menuOrder.values()];
+  return Object.fromEntries(rows.map((row) => [row.menu_id, { parent_id: row.parent_id, item_order: Number(row.item_order) }]));
+};
+
+const getMenuConfig = async () => ({ labels: await listMenuLabels(), customItems: await listCustomMenuItems(), order: await listMenuOrder() });
+
+const currentMenuMembership = async () => {
+  const membership = Object.fromEntries(Object.entries(builtInMenuMembership).map(([scope, ids]) => [scope, [...ids]]));
+  const customItems = await listCustomMenuItems();
+  for (const item of customItems) {
+    const scope = item.parent_id || "business";
+    if (!membership[scope]) membership[scope] = [];
+    membership[scope].push(item.id);
+    if (!membership[item.id]) membership[item.id] = [];
+  }
+  return membership;
+};
+
+const updateMenuOrder = async (input, actor, ip) => {
+  const scopes = input && typeof input.scopes === "object" && !Array.isArray(input.scopes) ? input.scopes : null;
+  if (!scopes) throw Object.assign(new Error("저장할 카테고리 순서를 확인해 주세요."), { status: 400 });
+  const membership = await currentMenuMembership();
+  const normalized = {};
+  for (const [scope, expectedIds] of Object.entries(membership)) {
+    if (!Object.prototype.hasOwnProperty.call(scopes, scope)) continue;
+    const ids = Array.isArray(scopes[scope]) ? scopes[scope].map(String) : [];
+    if (ids.length !== new Set(ids).size || ids.length !== expectedIds.length || ids.some((id) => !expectedIds.includes(id))) {
+      throw Object.assign(new Error("카테고리 구성과 순서가 일치하지 않습니다. 화면을 새로고침한 후 다시 시도해 주세요."), { status: 400 });
+    }
+    normalized[scope] = ids;
+  }
+  if (!normalized.root || menuGroupIds.some((id) => !normalized.root.includes(id))) throw Object.assign(new Error("최상위 카테고리 순서를 확인해 주세요."), { status: 400 });
+  const rows = Object.entries(normalized).flatMap(([parent_id, ids]) => ids.map((menu_id, item_order) => ({ menu_id, parent_id, item_order })));
+  if (pool) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const row of rows) await client.query(
+        "INSERT INTO portal_menu_order (menu_id,parent_id,item_order,updated_by) VALUES ($1,$2,$3,$4) ON CONFLICT (menu_id) DO UPDATE SET parent_id=EXCLUDED.parent_id,item_order=EXCLUDED.item_order,updated_by=EXCLUDED.updated_by,updated_at=now()",
+        [row.menu_id,row.parent_id,row.item_order,actor.id]
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { client.release(); }
+  } else rows.forEach((row) => memory.menuOrder.set(row.menu_id, row));
+  await writeAudit(actor.id, "menu.order.update", "portal_menu", "navigation", { scopes: normalized }, ip);
+  return getMenuConfig();
+};
 
 const customMenuExists = async (id, topOnly = false) => {
-  if (pool) return Boolean((await pool.query(`SELECT 1 FROM portal_custom_menu_items WHERE id::text=$1 ${topOnly ? "AND parent_id IS NULL" : ""} LIMIT 1`, [id])).rowCount);
+  if (pool) return Boolean((await pool.query(`SELECT 1 FROM portal_custom_menu_items WHERE id::text=$1 ${topOnly ? "AND (parent_id IS NULL OR parent_id = ANY($2::text[]))" : ""} LIMIT 1`, topOnly ? [id,menuGroupIds] : [id])).rowCount);
   const item = memory.customMenuItems.get(id);
-  return Boolean(item && (!topOnly || !item.parent_id));
+  return Boolean(item && (!topOnly || !item.parent_id || menuGroupIds.includes(item.parent_id)));
+};
+
+const customMenuBelongsToGroup = async (id, groupId) => {
+  if (pool) return Boolean((await pool.query("SELECT 1 FROM portal_custom_menu_items WHERE id::text=$1 AND (parent_id=$2 OR (parent_id IS NULL AND $2='business')) LIMIT 1", [id,groupId])).rowCount);
+  const item = memory.customMenuItems.get(id);
+  return Boolean(item && (item.parent_id === groupId || (!item.parent_id && groupId === "business")));
 };
 
 const normalizeMenuUrl = (raw) => {
@@ -220,12 +318,17 @@ const updateMenuLabels = async (input, actor, ip) => {
 
 const createMenuItem = async (input, actor, ip) => {
   const label = String(input.label || "").trim();
-  const parentId = String(input.parent_id || "").trim() || null;
+  const groupId = String(input.group_id || "").trim();
+  const selectedParentId = String(input.parent_id || "").trim() || null;
   const icon = String(input.icon || "").trim().slice(0, 2) || "◇";
   const url = normalizeMenuUrl(input.url);
   if (!label || label.length > 40) throw Object.assign(new Error("카테고리 이름은 1~40자로 입력해 주세요."), { status: 400 });
-  if (parentId && !builtInTopMenuIds.has(parentId) && !await customMenuExists(parentId, true)) throw Object.assign(new Error("상위 카테고리를 찾을 수 없습니다."), { status: 400 });
-  if (!parentId && url) throw Object.assign(new Error("연결 URL은 하위 카테고리를 등록할 때 설정해 주세요."), { status: 400 });
+  if (!menuGroupIds.includes(groupId)) throw Object.assign(new Error("소속 최상단 카테고리를 선택해 주세요."), { status: 400 });
+  if (selectedParentId) {
+    const builtInParentMatches = builtInMenuMembership[groupId]?.includes(selectedParentId);
+    if (!builtInParentMatches && !await customMenuBelongsToGroup(selectedParentId, groupId)) throw Object.assign(new Error("선택한 최상단과 상위 카테고리가 일치하지 않습니다."), { status: 400 });
+  }
+  const parentId = selectedParentId || groupId;
   const id = randomUUID();
   let itemOrder = 1;
   if (pool) {
@@ -648,6 +751,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/menu" && req.method === "GET") { await requireUser(req); return sendJson(res, 200, await getMenuConfig()); }
     if (url.pathname === "/api/admin/menu" && req.method === "PATCH") { const actor = await requireUser(req, true); return sendJson(res, 200, await updateMenuLabels(await readBody(req), actor, requestIp(req))); }
     if (url.pathname === "/api/admin/menu" && req.method === "POST") { const actor = await requireUser(req, true); return sendJson(res, 201, await createMenuItem(await readBody(req), actor, requestIp(req))); }
+    if (url.pathname === "/api/admin/menu/order" && req.method === "PUT") { const actor = await requireUser(req, true); return sendJson(res, 200, await updateMenuOrder(await readBody(req), actor, requestIp(req))); }
     if (url.pathname === "/api/admin/users" && req.method === "GET") { await requireUser(req, true); return sendJson(res, 200, { users: await listUsers() }); }
     if (url.pathname === "/api/admin/users" && req.method === "POST") { const actor = await requireUser(req, true); return sendJson(res, 201, { user: await createUser(await readBody(req), actor, requestIp(req)) }); }
     const userMatch = url.pathname.match(/^\/api\/admin\/users\/([0-9a-f-]+)$/i);
