@@ -43,7 +43,7 @@ const showToast = (message) => {
 const openLogin = () => {
   loginModal.classList.add("open");
   loginModal.setAttribute("aria-hidden", "false");
-  setTimeout(() => $("#username").focus(), 180);
+  setTimeout(() => ($("#username") || $("#email"))?.focus(), 180);
 };
 
 const closeLogin = () => {
@@ -69,10 +69,13 @@ loginForm.addEventListener("submit", async (event) => {
   loginForm.classList.add("is-loading");
   $("#loginError").textContent = "";
   try {
+    const usernameInput = $("#username") || $("#email");
+    const passwordInput = $("#password");
+    if (!usernameInput || !passwordInput) throw new Error("로그인 화면이 갱신되었습니다. 페이지를 새로고침해 주세요.");
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username: $("#username").value, password: $("#password").value })
+      body: JSON.stringify({ username: usernameInput.value.trim(), password: passwordInput.value })
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message);
