@@ -15,13 +15,21 @@ const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=u
 const staticCacheControl = (extension) => extension === ".html" ? "no-store, max-age=0" : "no-cache, max-age=0, must-revalidate";
 const dbConfig = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"].every((key) => process.env[key]);
 let pool = null;
-const memory = { users: new Map(), sessions: new Map(), audits: [], menuLabels: new Map(), customMenuItems: new Map() };
+const memory = { users: new Map(), sessions: new Map(), audits: [], menuLabels: new Map(), customMenuItems: new Map(), quickLinks: new Map() };
 const editableMenuIds = new Set([
   "management", "management_ar", "management_hr", "management_routine",
   "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
   "technology", "technology_focus", "amarans", "meetings", "calendar"
 ]);
 const builtInTopMenuIds = new Set(["management", "marketing", "technology", "amarans", "meetings", "calendar"]);
+const quickLinkCatalog = Object.freeze({
+  ar: { id: "ar", label: "미수채권", icon: "₩", url: "https://medprk-ar-dashboard.mycafe24.ai/" },
+  hr: { id: "hr", label: "HR", icon: "♙", url: "https://medprk-medpark-hr-maps.mycafe24.ai/" },
+  allo: { id: "allo", label: "MedPark-Allo", icon: "◫", url: "https://medprk-medpark-allo.mycafe24.ai/" },
+  global: { id: "global", label: "Global-MAPS", icon: "◎", url: "https://medprk-medpark-global-maps.mycafe24.ai/" },
+  tech: { id: "tech", label: "기술부 중점 업무", icon: "◇", url: "https://medprk-medpark-tech-conference-maps.mycafe24.ai/" }
+});
+const defaultQuickLinkIds = ["ar", "hr", "allo", "global"];
 
 const hashPassword = async (password) => {
   const salt = randomBytes(16).toString("hex");
@@ -84,6 +92,11 @@ const initDatabase = async () => {
       icon varchar(8), url text, item_order integer NOT NULL DEFAULT 0,
       created_by uuid REFERENCES users(id) ON DELETE SET NULL,
       created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS user_quick_links (
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      system_id varchar(30) NOT NULL, position integer NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (user_id, system_id)
     );
   `);
   const count = Number((await pool.query("SELECT count(*)::int AS count FROM users WHERE status::text = 'active' AND role::text = 'admin'")).rows[0].count);
@@ -188,6 +201,36 @@ const createMenuItem = async (input, actor, ip) => {
   }
   await writeAudit(actor.id, "menu.item.create", "portal_menu", id, { parent_id: parentId, label, url: Boolean(url) }, ip);
   return { item: { id, parent_id: parentId, label, icon, url, item_order: itemOrder }, ...(await getMenuConfig()) };
+};
+
+const publicQuickLink = (id) => quickLinkCatalog[id] ? { ...quickLinkCatalog[id] } : null;
+
+const getQuickLinks = async (userId) => {
+  let ids;
+  if (pool) ids = (await pool.query("SELECT system_id FROM user_quick_links WHERE user_id=$1 ORDER BY position", [userId])).rows.map((row) => row.system_id);
+  else ids = memory.quickLinks.get(userId) || [];
+  if (!ids.length) ids = defaultQuickLinkIds;
+  return { links: ids.map(publicQuickLink).filter(Boolean), catalog: Object.values(quickLinkCatalog) };
+};
+
+const updateQuickLinks = async (input, user, ip) => {
+  const ids = Array.isArray(input.system_ids) ? [...new Set(input.system_ids.map((id) => String(id)))] : [];
+  if (!ids.length || ids.length > 5) throw Object.assign(new Error("자주 찾는 시스템은 1~5개를 선택해 주세요."), { status: 400 });
+  if (ids.some((id) => !quickLinkCatalog[id])) throw Object.assign(new Error("선택할 수 없는 시스템이 포함되어 있습니다."), { status: 400 });
+  if (pool) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM user_quick_links WHERE user_id=$1", [user.id]);
+      for (const [position, id] of ids.entries()) await client.query("INSERT INTO user_quick_links (user_id,system_id,position) VALUES ($1,$2,$3)", [user.id,id,position]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { client.release(); }
+  } else memory.quickLinks.set(user.id, ids);
+  await writeAudit(user.id, "user.quick_links.update", "user", user.id, { system_ids: ids }, ip);
+  return getQuickLinks(user.id);
 };
 
 const createUser = async (input, actor, ip) => {
@@ -326,6 +369,8 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { success: true }, { "set-cookie": cookieHeader("", true) });
     }
     if (url.pathname === "/api/auth/me" && req.method === "GET") return sendJson(res, 200, { user: publicUser(await requireUser(req)) });
+    if (url.pathname === "/api/quick-links" && req.method === "GET") { const user = await requireUser(req); return sendJson(res, 200, await getQuickLinks(user.id)); }
+    if (url.pathname === "/api/quick-links" && req.method === "PUT") { const user = await requireUser(req); return sendJson(res, 200, await updateQuickLinks(await readBody(req), user, requestIp(req))); }
     if (url.pathname === "/api/menu" && req.method === "GET") { await requireUser(req); return sendJson(res, 200, await getMenuConfig()); }
     if (url.pathname === "/api/admin/menu" && req.method === "PATCH") { const actor = await requireUser(req, true); return sendJson(res, 200, await updateMenuLabels(await readBody(req), actor, requestIp(req))); }
     if (url.pathname === "/api/admin/menu" && req.method === "POST") { const actor = await requireUser(req, true); return sendJson(res, 201, await createMenuItem(await readBody(req), actor, requestIp(req))); }
