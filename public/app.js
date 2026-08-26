@@ -45,6 +45,7 @@ let carouselMode = "calendar";
 let carouselTimer;
 let currentUser = null;
 let calendarMonth = new Date();
+let selectedCalendarDateKey = null;
 let employeeCache = [];
 let editingEmployeeId = null;
 let quickLinks = [];
@@ -258,11 +259,16 @@ const navigate = (page) => {
 };
 
 const calendarKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+const resetCalendarToToday = () => {
+  const today = new Date();
+  calendarMonth = new Date(today.getFullYear(),today.getMonth(),1);
+  selectedCalendarDateKey = calendarKey(today);
+};
 const eventDateKey = (event) => {
   if (/^\d{4}-\d{2}-\d{2}$/.test(event.start || "")) return event.start;
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(event.start));
 };
-const renderCalendarDays = (events = []) => {
+const renderCalendarDays = (events = [], selectedKey = "") => {
   const heads = ["일", "월", "화", "수", "목", "금", "토"].map((d) => `<div class="day-head">${d}</div>`).join("");
   const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
   const gridStart = new Date(first); gridStart.setDate(first.getDate() - first.getDay());
@@ -272,7 +278,7 @@ const renderCalendarDays = (events = []) => {
     const key = calendarKey(date);
     const dayEvents = events.filter((event) => eventDateKey(event) === key);
     const muted = date.getMonth() !== calendarMonth.getMonth();
-    return `<div class="${muted ? "muted-day" : ""} ${key === todayKey ? "today-day" : ""}">${date.getDate()}${dayEvents.slice(0,2).map((event) => `<span class="event-dot" style="--event-color:${escapeHtml(event.calendar_color || "#0a9b7e")};--event-foreground:${escapeHtml(event.calendar_foreground || "#ffffff")}" title="${escapeHtml(event.calendar_name || "Google Calendar")}">${escapeHtml(event.title)}</span>`).join("")}${dayEvents.length > 2 ? `<small class="more-events">+${dayEvents.length - 2}</small>` : ""}</div>`;
+    return `<button type="button" class="calendar-date ${muted ? "muted-day" : ""} ${key === todayKey ? "today-day" : ""} ${key === selectedKey ? "selected-day" : ""}" data-calendar-date="${key}" aria-label="${date.getMonth() + 1}월 ${date.getDate()}일 일정 ${dayEvents.length}건">${date.getDate()}${dayEvents.slice(0,2).map((event) => `<span class="event-dot" style="--event-color:${escapeHtml(event.calendar_color || "#0a9b7e")};--event-foreground:${escapeHtml(event.calendar_foreground || "#ffffff")}" title="${escapeHtml(event.calendar_name || "Google Calendar")}">${escapeHtml(event.title)}</span>`).join("")}${dayEvents.length > 2 ? `<small class="more-events">+${dayEvents.length - 2}</small>` : ""}</button>`;
   }).join("");
   return heads + days;
 };
@@ -289,23 +295,38 @@ const renderCalendarView = async () => {
     if (!response.ok) throw new Error(result.message);
     const events = result.events || [];
     const today = new Date();
-    const focusDate = today.getFullYear() === year && today.getMonth() === month - 1 ? today : new Date(year,month - 1,1);
-    const focusKey = calendarKey(focusDate);
-    const focusEvents = events.filter((event) => eventDateKey(event) === focusKey);
-    const focusLabel = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(focusDate);
-    const scheduleHtml = focusEvents.length ? focusEvents.slice(0,5).map((event) => {
-      const start = event.all_day ? "종일" : new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.start));
-      const end = event.all_day || !event.end ? "" : new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.end));
-      return `<div class="schedule-item" style="--event-color:${escapeHtml(event.calendar_color || "#0a9b7e")}"><time>${escapeHtml(start)}${end ? ` - ${escapeHtml(end)}` : ""}</time><b>${escapeHtml(event.title)}</b><span>${event.calendar_color ? `<i class="calendar-color-dot" style="--calendar-color:${escapeHtml(event.calendar_color)}"></i>` : ""}${escapeHtml(event.calendar_name || event.location || "Google Calendar")}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</span></div>`;
-    }).join("") : '<p class="calendar-empty">등록된 일정이 없습니다.</p>';
-    body.innerHTML = `<div class="calendar-view main-calendar-view">
-      <div class="calendar-area"><div class="calendar-top"><button id="calendarPrev" aria-label="이전 달">‹</button><b>${year}년 ${month}월</b><button id="calendarNext" aria-label="다음 달">›</button></div><div class="calendar-grid">${renderCalendarDays(events)}</div></div>
-      <aside class="schedule-list"><h3>${focusLabel}</h3>${scheduleHtml}<span class="integration-badge ${result.connected ? "connected" : "waiting"}">${result.connected ? `Google Calendar ${result.calendar_count || 1}개 연결 · ${events.length}건` : escapeHtml(result.message || "연결 설정 필요")}</span></aside>
-    </div>`;
     const todayCount = $("#todayScheduleCount");
-    if (todayCount && today.getFullYear() === year && today.getMonth() === month - 1) todayCount.textContent = focusEvents.length;
-    $("#calendarPrev").onclick = () => { calendarMonth = new Date(year,month - 2,1); renderCalendarView(); };
-    $("#calendarNext").onclick = () => { calendarMonth = new Date(year,month,1); renderCalendarView(); };
+    if (todayCount && today.getFullYear() === year && today.getMonth() === month - 1) todayCount.textContent = events.filter((event) => eventDateKey(event) === calendarKey(today)).length;
+    const monthPrefix = `${year}-${String(month).padStart(2,"0")}`;
+    const initialDate = selectedCalendarDateKey?.startsWith(monthPrefix)
+      ? new Date(`${selectedCalendarDateKey}T12:00:00`)
+      : (today.getFullYear() === year && today.getMonth() === month - 1 ? today : new Date(year,month - 1,1));
+    const drawSelectedDate = (focusKey) => {
+      selectedCalendarDateKey = focusKey;
+      const focusDate = new Date(`${focusKey}T12:00:00`);
+      const focusEvents = events.filter((event) => eventDateKey(event) === focusKey);
+      const focusLabel = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(focusDate);
+      const scheduleHtml = focusEvents.length ? focusEvents.map((event) => {
+        const start = event.all_day ? "종일" : new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.start));
+        const end = event.all_day || !event.end ? "" : new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.end));
+        return `<article class="schedule-item" style="--event-color:${escapeHtml(event.calendar_color || "#0a9b7e")}"><time>${escapeHtml(start)}${end ? ` - ${escapeHtml(end)}` : ""}</time><b>${escapeHtml(event.title)}</b><span>${event.calendar_color ? `<i class="calendar-color-dot" style="--calendar-color:${escapeHtml(event.calendar_color)}"></i>` : ""}${escapeHtml(event.calendar_name || "Google Calendar")}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</span>${event.description ? `<p>${escapeHtml(event.description)}</p>` : ""}</article>`;
+      }).join("") : '<p class="calendar-empty">등록된 일정이 없습니다.</p>';
+      body.innerHTML = `<div class="calendar-view main-calendar-view">
+        <div class="calendar-area"><div class="calendar-top"><button id="calendarPrev" aria-label="이전 달">‹</button><b>${year}년 ${month}월</b><button id="calendarNext" aria-label="다음 달">›</button></div><div class="calendar-grid">${renderCalendarDays(events, focusKey)}</div></div>
+        <aside class="schedule-list" aria-live="polite"><h3>${focusLabel}<small>${focusEvents.length}건</small></h3>${scheduleHtml}<span class="integration-badge ${result.connected ? "connected" : "waiting"}">${result.connected ? `Google Calendar ${result.calendar_count || 1}개 연결 · ${events.length}건` : escapeHtml(result.message || "일정을 불러올 수 없습니다.")}</span></aside>
+      </div>`;
+      $("#calendarPrev").onclick = () => { selectedCalendarDateKey = null; calendarMonth = new Date(year,month - 2,1); renderCalendarView(); };
+      $("#calendarNext").onclick = () => { selectedCalendarDateKey = null; calendarMonth = new Date(year,month,1); renderCalendarView(); };
+      body.querySelectorAll("[data-calendar-date]").forEach((button) => button.addEventListener("click", () => {
+        const nextDate = new Date(`${button.dataset.calendarDate}T12:00:00`);
+        if (nextDate.getFullYear() !== year || nextDate.getMonth() !== month - 1) {
+          selectedCalendarDateKey = button.dataset.calendarDate;
+          calendarMonth = new Date(nextDate.getFullYear(),nextDate.getMonth(),1);
+          renderCalendarView();
+        } else drawSelectedDate(button.dataset.calendarDate);
+      }));
+    };
+    drawSelectedDate(calendarKey(initialDate));
   } catch (error) {
     body.innerHTML = `<div class="calendar-error-state"><i>!</i><h3>일정을 불러오지 못했습니다.</h3><p>${escapeHtml(error.message || "잠시 후 다시 시도하거나 관리자에게 문의해 주세요.")}</p></div>`;
   }
@@ -379,6 +400,7 @@ const openQuickLinksEditor = () => {
 };
 
 const renderDashboard = () => {
+  resetCalendarToToday();
   carouselMode = "calendar";
   pageContent.innerHTML = `
     <section class="page-heading"><div><span class="eyebrow">OVERVIEW</span><h1>안녕하세요, ${currentUser?.name || "임직원"}님</h1><p>주요 일정과 국내·해외 사업 현황을 한눈에 확인하세요.</p></div><span class="live-status"><i></i> 시스템 정상 운영 중</span></section>
@@ -833,6 +855,7 @@ const renderCalendarSettings = () => {
 };
 
 const renderCalendarPage = () => {
+  resetCalendarToToday();
   pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">COLLABORATION</span><h1>일정(캘린더)</h1><p>메드파크 주요 일정을 월별로 확인합니다.</p></div></section><section class="panel standalone-calendar-panel"><div id="carouselBody" class="carousel-body"></div></section>`;
   carouselMode = "calendar";
   renderCalendarView();

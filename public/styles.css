@@ -217,7 +217,7 @@ a { color: inherit; text-decoration: none; }
 .dashboard-page .global-map-panel { height: 100%; min-height: 0; }
 .dashboard-page .calendar-area { min-height: 0; display: flex; flex-direction: column; }
 .dashboard-page .calendar-grid { flex: 1; grid-template-rows: auto repeat(6, minmax(44px, 1fr)); }
-.dashboard-page .calendar-grid > div { min-height: 0; }
+.dashboard-page .calendar-grid > :is(div,button) { min-height: 0; }
 .dashboard-page .schedule-list,
 .dashboard-page .coverage-regions,
 .dashboard-page .country-sales { min-height: 0; overflow-y: auto; }
@@ -233,20 +233,26 @@ a { color: inherit; text-decoration: none; }
 .calendar-top b { font-size: 13px; }
 .calendar-top button { border: 0; background: transparent; color: #778581; }
 .calendar-grid { width: 100%; min-width: 0; display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); border: 1px solid #e5ece9; border-radius: 9px; overflow: hidden; }
-.calendar-grid > div { position: relative; min-width: 0; min-height: 58px; overflow: hidden; padding: 8px; border-right: 1px solid #e8eeec; border-bottom: 1px solid #e8eeec; color: #4f5e5a; font-size: 9px; }
-.calendar-grid > div:nth-child(7n) { border-right: 0; }
+.calendar-grid > :is(div,button) { position: relative; min-width: 0; min-height: 58px; overflow: hidden; padding: 8px; border: 0; border-right: 1px solid #e8eeec; border-bottom: 1px solid #e8eeec; color: #4f5e5a; font-size: 9px; }
+.calendar-grid > :is(div,button):nth-child(7n) { border-right: 0; }
 .calendar-grid .day-head { min-height: 32px; background: #f8faf9; color: #8a9693; text-align: center; }
+.calendar-grid .calendar-date { background: white; text-align: left; cursor: pointer; transition: background .15s, box-shadow .15s; }
+.calendar-grid .calendar-date:hover { background: #f4faf7; }
+.calendar-grid .calendar-date:focus-visible { z-index: 2; outline: 2px solid var(--green-600); outline-offset: -2px; }
 .calendar-grid .muted-day { color: #bbc4c1; background: #fbfcfc; }
 .calendar-grid .today-day { background: #f1faf7; color: var(--green-800); font-weight: 800; }
+.calendar-grid .selected-day { z-index: 1; background: #e4f5ef; color: var(--green-800); box-shadow: inset 0 0 0 2px var(--green-600); font-weight: 850; }
 .event-dot { display: block; overflow: hidden; margin-top: 3px; padding: 3px 5px; border-radius: 4px; background: var(--event-color, #0a9b7e); color: var(--event-foreground, #fff); white-space: nowrap; text-overflow: ellipsis; font-size: 7px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.04); }
 .more-events { display: block; margin-top: 2px; color: var(--green-700); font-size: 7px; font-weight: 800; }
 .schedule-list { padding: 18px; background: #f8faf9; border-left: 1px solid #e6ecea; }
-.schedule-list h3 { margin: 1px 0 15px; font-size: 12px; }
+.schedule-list h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 1px 0 15px; font-size: 12px; }
+.schedule-list h3 small { padding: 4px 6px; border-radius: 5px; background: #e7f4ef; color: var(--green-800); font-size: 7px; }
 .schedule-item { position: relative; margin-bottom: 10px; padding: 12px 10px 12px 17px; border-radius: 8px; background: white; border: 1px solid #e7edeb; }
 .schedule-item::before { content: ""; position: absolute; left: 8px; top: 14px; bottom: 14px; width: 3px; border-radius: 2px; background: var(--event-color, var(--green-600)); }
 .schedule-item time { display: block; color: var(--green-700); font-size: 8px; font-weight: 750; }
 .schedule-item b { display: block; margin: 4px 0; font-size: 10px; }
 .schedule-item span { color: #8a9693; font-size: 8px; }
+.schedule-item p { margin: 7px 0 0; color: #63716d; font-size: 8px; line-height: 1.55; white-space: pre-wrap; }
 .map-view { display: grid; grid-template-columns: minmax(0,1fr) 240px; min-height: 405px; }
 .map-stage { position: relative; min-height: 405px; display: grid; place-items: center; overflow: hidden; background: #eef6f3; }
 .map-stage::before { content: ""; position: absolute; inset: 0; opacity: .5; background-image: linear-gradient(#d5e5e0 1px, transparent 1px), linear-gradient(90deg,#d5e5e0 1px,transparent 1px); background-size: 42px 42px; }
@@ -576,7 +582,7 @@ a { color: inherit; text-decoration: none; }
   .metric-card { min-height: 104px; padding: 15px; }
   .metric-card strong { font-size: 22px; }
   .calendar-area { padding: 11px; }
-  .calendar-grid > div { min-height: 46px; padding: 5px; }
+  .calendar-grid > :is(div,button) { min-height: 46px; padding: 5px; }
   .calendar-grid .day-head { min-height: 27px; }
   .event-dot { display: none; }
   .side-stack { grid-template-columns: 1fr; }

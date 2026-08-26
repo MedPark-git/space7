@@ -608,7 +608,7 @@ const fetchEventsForCalendar = async (calendar, params, headers) => {
       calendar_color: calendar.background_color || "#0a9b7e", calendar_foreground: calendar.foreground_color || "#ffffff",
       title: event.summary || "제목 없는 일정",
       start: event.start?.dateTime || event.start?.date, end: event.end?.dateTime || event.end?.date,
-      all_day: Boolean(event.start?.date), location: event.location || "", html_link: event.htmlLink || ""
+      all_day: Boolean(event.start?.date), location: event.location || "", description: event.description || "", html_link: event.htmlLink || ""
     })));
     pageToken = data.nextPageToken || "";
   } while (pageToken);

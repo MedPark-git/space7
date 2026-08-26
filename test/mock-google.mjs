@@ -15,7 +15,7 @@ globalThis.fetch = async (input, init) => {
   if (match) {
     const calendarId = decodeURIComponent(match[1]);
     const items = calendarId === "medpark.remote@gmail.com"
-      ? [{ id: "primary-event", summary: "경영회의", start: { dateTime: "2026-08-10T09:00:00+09:00" }, end: { dateTime: "2026-08-10T10:00:00+09:00" } }]
+      ? [{ id: "primary-event", summary: "경영회의", description: "월간 경영 현황 점검", location: "대회의실", start: { dateTime: "2026-08-10T09:00:00+09:00" }, end: { dateTime: "2026-08-10T10:00:00+09:00" } }]
       : [{ id: "team-event", summary: "전사행사", start: { date: "2026-08-11" }, end: { date: "2026-08-12" } }];
     return Response.json({ items });
   }
