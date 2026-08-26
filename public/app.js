@@ -20,7 +20,7 @@ const menuGroups = [
     ]}
   ]},
   { label: "COLLABORATION", items: [
-    { id: "amarans", icon: "A", title: "아마란스" },
+    { id: "amarans", icon: "A", title: "아마란스", url: "https://gw.medpark.kr/" },
     { id: "meetings", icon: "☷", title: "회의록" }
   ]},
   { label: "ADMIN", items: [
@@ -187,6 +187,7 @@ const renderNavigation = () => {
       <div class="nav-heading">${group.label}</div>
       ${group.items.map((item) => {
         const hasChildren = Boolean(item.children?.length);
+        if (item.url && !hasChildren) return `<a class="nav-item" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><span class="nav-icon">${escapeHtml(item.icon || "◇")}</span><span>${escapeHtml(item.title)}</span><span class="chevron">↗</span></a>`;
         return `
         <button class="nav-item ${item.id === currentPage ? "active" : ""}" data-nav="${escapeHtml(item.id)}" data-has-children="${hasChildren}">
           <span class="nav-icon">${escapeHtml(item.icon || "◇")}</span><span>${escapeHtml(item.title)}</span>${hasChildren ? '<span class="chevron">›</span>' : ""}
@@ -763,7 +764,9 @@ const setupSearch = () => {
     const visibleGroups = menuGroups.filter((group) => group.label !== "ADMIN" || currentUser?.role === "admin");
     const allItems = visibleGroups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.label })));
     const items = allItems.filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
-    $("#searchResults").innerHTML = items.map((item) => `<button type="button" class="search-result" data-search-page="${item.id}"><b>${item.icon} &nbsp; ${item.title}</b><span>${item.group}</span></button>`).join("") || '<div style="padding:30px;text-align:center;color:#8a9693;font-size:11px">검색 결과가 없습니다.</div>';
+    $("#searchResults").innerHTML = items.map((item) => item.url
+      ? `<a class="search-result" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(item.icon)} &nbsp; ${escapeHtml(item.title)}</b><span>${escapeHtml(item.group)} · 새 탭</span></a>`
+      : `<button type="button" class="search-result" data-search-page="${escapeHtml(item.id)}"><b>${escapeHtml(item.icon)} &nbsp; ${escapeHtml(item.title)}</b><span>${escapeHtml(item.group)}</span></button>`).join("") || '<div style="padding:30px;text-align:center;color:#8a9693;font-size:11px">검색 결과가 없습니다.</div>';
     $$('[data-search-page]').forEach((button) => button.addEventListener("click", () => { searchDialog.close(); navigate(button.dataset.searchPage); }));
   };
   $("#searchButton").addEventListener("click", () => { draw(); searchDialog.showModal(); setTimeout(() => $("#menuSearch").focus(), 50); });
