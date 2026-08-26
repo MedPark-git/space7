@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const app = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
 
 test("최상위 아마란스 메뉴가 공식 그룹웨어 주소로 연결된다", () => {
   assert.match(app, /id:\s*"amarans"[^\n]+url:\s*"https:\/\/gw\.medpark\.kr\/"/);
@@ -33,4 +34,14 @@ test("일정 조회는 COLLABORATION에, 연동 관리는 ADMIN에 분리된다"
   assert.match(app, /id:\s*"admin",\s*label:\s*"ADMIN"[\s\S]*?id:\s*"calendar_admin"[^\n]+title:\s*"일정\(캘린더\)_관리자"/);
   assert.match(app, /\["admin",\s*"calendar_admin"\]\.includes\(page\)/);
   assert.match(app, /page === "calendar_admin"\) renderCalendarSettings\(\)/);
+});
+
+test("임직원 일정 화면에는 연결 설정이 노출되지 않고 BUSINESS 중복 일정은 제거된다", () => {
+  const start = app.indexOf("const renderCalendarPage");
+  const end = app.indexOf("const openSidebar", start);
+  const calendarPage = app.slice(start, end);
+  assert.doesNotMatch(calendarPage, /연결 설정|openCalendarAdmin/);
+  assert.match(server, /20260826_remove_business_calendar_v1/);
+  assert.match(server, /parent_id IS NULL OR parent_id='business'/);
+  assert.match(server, /menu\.legacy_calendar\.delete/);
 });

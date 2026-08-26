@@ -307,8 +307,7 @@ const renderCalendarView = async () => {
     $("#calendarPrev").onclick = () => { calendarMonth = new Date(year,month - 2,1); renderCalendarView(); };
     $("#calendarNext").onclick = () => { calendarMonth = new Date(year,month,1); renderCalendarView(); };
   } catch (error) {
-    body.innerHTML = `<div class="calendar-error-state"><i>!</i><h3>Google Calendar를 불러오지 못했습니다.</h3><p>${escapeHtml(error.message || "연결 설정을 확인해 주세요.")}</p>${currentUser?.role === "admin" ? '<button id="openCalendarSettings" class="button primary">연결 설정 보기</button>' : ""}</div>`;
-    $("#openCalendarSettings")?.addEventListener("click", () => navigate("calendar_admin"));
+    body.innerHTML = `<div class="calendar-error-state"><i>!</i><h3>일정을 불러오지 못했습니다.</h3><p>${escapeHtml(error.message || "잠시 후 다시 시도하거나 관리자에게 문의해 주세요.")}</p></div>`;
   }
 };
 
@@ -834,10 +833,9 @@ const renderCalendarSettings = () => {
 };
 
 const renderCalendarPage = () => {
-  pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">COLLABORATION</span><h1>일정(캘린더)</h1><p>메드파크 주요 일정을 월별로 확인합니다.</p></div>${currentUser?.role === "admin" ? '<button id="openCalendarAdmin" class="button secondary">연결 설정</button>' : ""}</section><section class="panel standalone-calendar-panel"><div id="carouselBody" class="carousel-body"></div></section>`;
+  pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">COLLABORATION</span><h1>일정(캘린더)</h1><p>메드파크 주요 일정을 월별로 확인합니다.</p></div></section><section class="panel standalone-calendar-panel"><div id="carouselBody" class="carousel-body"></div></section>`;
   carouselMode = "calendar";
   renderCalendarView();
-  $("#openCalendarAdmin")?.addEventListener("click", () => navigate("calendar_admin"));
 };
 
 const openSidebar = () => { $("#sidebar").classList.add("open"); $("#sidebarBackdrop").classList.add("open"); };

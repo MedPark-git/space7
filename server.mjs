@@ -194,6 +194,30 @@ const initDatabase = async () => {
     await calendarMenuMigration.query("ROLLBACK");
     throw error;
   } finally { calendarMenuMigration.release(); }
+  const legacyBusinessCalendarMigration = await pool.connect();
+  try {
+    await legacyBusinessCalendarMigration.query("BEGIN");
+    const migration = await legacyBusinessCalendarMigration.query("INSERT INTO portal_app_migrations (id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING id", ["20260826_remove_business_calendar_v1"]);
+    if (migration.rowCount) {
+      const duplicateIds = (await legacyBusinessCalendarMigration.query(
+        "SELECT id::text FROM portal_custom_menu_items WHERE (parent_id IS NULL OR parent_id='business') AND regexp_replace(label, '\\s', '', 'g')='일정(캘린더)'"
+      )).rows.map((row) => row.id);
+      for (const duplicateId of duplicateIds) {
+        await legacyBusinessCalendarMigration.query("DELETE FROM portal_menu_order WHERE menu_id IN (SELECT id::text FROM portal_custom_menu_items WHERE parent_id=$1) OR parent_id=$1", [duplicateId]);
+        await legacyBusinessCalendarMigration.query("DELETE FROM portal_custom_menu_items WHERE parent_id=$1", [duplicateId]);
+        await legacyBusinessCalendarMigration.query("DELETE FROM portal_menu_order WHERE menu_id=$1 OR parent_id=$1", [duplicateId]);
+        await legacyBusinessCalendarMigration.query("DELETE FROM portal_custom_menu_items WHERE id::text=$1", [duplicateId]);
+      }
+      if (duplicateIds.length) await legacyBusinessCalendarMigration.query(
+        "INSERT INTO audit_logs (action,target_type,target_id,metadata) VALUES ($1,$2,$3,$4)",
+        ["menu.legacy_calendar.delete","portal_menu","business/calendar",{ deleted_ids: duplicateIds }]
+      );
+    }
+    await legacyBusinessCalendarMigration.query("COMMIT");
+  } catch (error) {
+    await legacyBusinessCalendarMigration.query("ROLLBACK");
+    throw error;
+  } finally { legacyBusinessCalendarMigration.release(); }
   const count = Number((await pool.query("SELECT count(*)::int AS count FROM users WHERE status::text = 'active' AND role::text = 'admin'")).rows[0].count);
   if (count === 0) {
     await pool.query(`INSERT INTO users (id,username,email,password_hash,name,employee_no,department,role,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [randomUUID(), "admin", null, await hashPassword("Preview123!"), "김관리", "M001", "경영지원본부", "admin", "active"]);
