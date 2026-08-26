@@ -79,12 +79,12 @@
             <h2 id="loginTitle">임직원 로그인</h2>
             <p>회사에서 발급받은 계정으로 로그인하세요.</p>
           </div>
-          <label>이메일<input id="email" type="email" autocomplete="username" value="admin@medpark.co.kr" required /></label>
+          <label>계정 ID<input id="username" type="text" autocomplete="username" value="admin" pattern="[A-Za-z0-9._-]{4,30}" required /></label>
           <label>비밀번호<span class="password-wrap"><input id="password" type="password" autocomplete="current-password" value="Preview123!" required /><button id="togglePassword" type="button" aria-label="비밀번호 표시">보기</button></span></label>
-          <div class="form-options"><label class="check"><input type="checkbox" /> 이메일 저장</label><a href="#" id="resetLink">비밀번호 재설정</a></div>
+          <div class="form-options"><label class="check"><input type="checkbox" /> 계정 ID 저장</label><a href="#" id="resetLink">비밀번호 재설정</a></div>
           <p id="loginError" class="form-error"></p>
           <button class="button primary full large" type="submit"><span class="button-label">로그인</span><span class="spinner"></span></button>
-          <div class="preview-account"><b>미리보기 계정</b><span>admin@medpark.co.kr / Preview123!</span></div>
+          <div class="preview-account"><b>초기 관리자 계정</b><span>admin / Preview123!</span></div>
         </form>
       </section>
     </div>
@@ -122,6 +122,23 @@
       <form method="dialog">
         <div class="dialog-search"><span>⌕</span><input id="menuSearch" placeholder="메뉴 또는 시스템 검색" autocomplete="off" /><button value="cancel">ESC</button></div>
         <div id="searchResults" class="search-results"></div>
+      </form>
+    </dialog>
+
+    <dialog id="employeeDialog" class="employee-dialog">
+      <form id="employeeForm" method="dialog">
+        <header><div><span class="eyebrow">ADMIN ONLY</span><h2>임직원 계정 등록</h2><p>로그인에 사용할 계정 ID와 초기 정보를 입력합니다.</p></div><button type="button" data-close-employee aria-label="닫기">×</button></header>
+        <div class="employee-form-grid">
+          <label>계정 ID<input name="username" pattern="[A-Za-z0-9._-]{4,30}" placeholder="영문·숫자 4~30자" required /></label>
+          <label>성명<input name="name" placeholder="홍길동" required /></label>
+          <label>사번<input name="employee_no" placeholder="M001" /></label>
+          <label>부서<input name="department" placeholder="경영지원본부" /></label>
+          <label>이메일(선택)<input name="email" type="email" placeholder="name@company.com" /></label>
+          <label>권한<select name="role"><option value="basic">기본(임직원)</option><option value="admin">관리자</option></select></label>
+          <label class="full-field">초기 비밀번호<input name="password" type="password" minlength="8" placeholder="8자 이상" required /></label>
+        </div>
+        <p id="employeeFormError" class="form-error"></p>
+        <footer><button type="button" class="button secondary" data-close-employee>취소</button><button type="submit" class="button primary">계정 등록</button></footer>
       </form>
     </dialog>
 
