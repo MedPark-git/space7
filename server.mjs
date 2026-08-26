@@ -12,6 +12,7 @@ const sessionCookie = "medpark_session";
 const sessionTtlMs = 12 * 60 * 60 * 1000;
 const usernamePattern = /^[A-Za-z0-9._-]{4,30}$/;
 const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json; charset=utf-8" };
+const staticCacheControl = (extension) => extension === ".html" ? "no-store, max-age=0" : "no-cache, max-age=0, must-revalidate";
 const dbConfig = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"].every((key) => process.env[key]);
 let pool = null;
 const memory = { users: new Map(), sessions: new Map(), audits: [] };
@@ -195,8 +196,17 @@ const server = http.createServer(async (req, res) => {
     relative = normalize(relative).replace(/^(\.\.[/\\])+/, "");
     const filePath = join(root, relative);
     if (!filePath.startsWith(root)) return sendJson(res, 403, { message: "Forbidden" });
-    try { const file = await readFile(filePath); res.writeHead(200, { "content-type": mime[extname(filePath)] || "application/octet-stream" }); res.end(file); }
-    catch { const index = await readFile(join(root, "index.html")); res.writeHead(200, { "content-type": mime[".html"] }); res.end(index); }
+    try {
+      const file = await readFile(filePath);
+      const extension = extname(filePath);
+      res.writeHead(200, { "content-type": mime[extension] || "application/octet-stream", "cache-control": staticCacheControl(extension) });
+      res.end(file);
+    }
+    catch {
+      const index = await readFile(join(root, "index.html"));
+      res.writeHead(200, { "content-type": mime[".html"], "cache-control": staticCacheControl(".html") });
+      res.end(index);
+    }
   } catch (error) {
     if (error?.code === "23505") return sendJson(res, 409, { message: "이미 사용 중인 계정 ID 또는 사번입니다." });
     sendJson(res, error.status || 500, { message: error.status ? error.message : "서버 처리 중 오류가 발생했습니다." });
