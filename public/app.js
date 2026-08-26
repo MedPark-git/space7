@@ -4,19 +4,19 @@ const menuGroups = [
   ]},
   { label: "BUSINESS", items: [
     { id: "management", icon: "▰", title: "경영사업본부", children: [
-      { title: "미수채권 관리시스템", url: "https://medprk-ar-dashboard.mycafe24.ai/" },
-      { title: "HR", url: "https://medprk-medpark-hr-maps.mycafe24.ai/" },
-      { title: "경영 루틴 업무 시스템", url: null }
+      { id: "management_ar", title: "미수채권 관리시스템", url: "https://medprk-ar-dashboard.mycafe24.ai/" },
+      { id: "management_hr", title: "HR", url: "https://medprk-medpark-hr-maps.mycafe24.ai/" },
+      { id: "management_routine", title: "경영 루틴 업무 시스템", url: null }
     ]},
     { id: "marketing", icon: "◫", title: "마케팅사업본부", children: [
-      { title: "국내영업 · MedPark-Allo", url: "https://medprk-medpark-allo.mycafe24.ai/" },
-      { title: "국내영업 · 덴탈", url: null },
-      { title: "국내영업 · 메디컬", url: null },
-      { title: "국내영업 · 에스테틱", url: null },
-      { title: "해외영업 · Global-MAPS", url: "https://medprk-medpark-global-maps.mycafe24.ai/" }
+      { id: "marketing_allo", title: "국내영업 · MedPark-Allo", url: "https://medprk-medpark-allo.mycafe24.ai/" },
+      { id: "marketing_dental", title: "국내영업 · 덴탈", url: null },
+      { id: "marketing_medical", title: "국내영업 · 메디컬", url: null },
+      { id: "marketing_aesthetic", title: "국내영업 · 에스테틱", url: null },
+      { id: "marketing_global", title: "해외영업 · Global-MAPS", url: "https://medprk-medpark-global-maps.mycafe24.ai/" }
     ]},
     { id: "technology", icon: "◇", title: "기술사업본부", children: [
-      { title: "기술부 중점 업무", url: "https://medprk-medpark-tech-conference-maps.mycafe24.ai/" }
+      { id: "technology_focus", title: "기술부 중점 업무", url: "https://medprk-medpark-tech-conference-maps.mycafe24.ai/" }
     ]}
   ]},
   { label: "COLLABORATION", items: [
@@ -45,17 +45,37 @@ let currentUser = null;
 let employeeCache = [];
 let editingEmployeeId = null;
 
-const editableMenuIds = new Set(["management", "marketing", "technology", "amarans", "meetings", "calendar"]);
-const editableMenuItems = () => menuGroups.flatMap((group) => group.items).filter((item) => editableMenuIds.has(item.id));
+const builtInEditableMenuIds = new Set([
+  "management", "management_ar", "management_hr", "management_routine",
+  "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
+  "technology", "technology_focus", "amarans", "meetings", "calendar"
+]);
+const editableTopMenuItems = () => menuGroups.flatMap((group) => group.items).filter((item) => item.id !== "dashboard" && item.id !== "admin");
+const editableMenuItems = () => editableTopMenuItems().flatMap((item) => [item, ...(item.children || [])]);
 
-const loadMenuLabels = async () => {
+const applyMenuConfig = ({ labels = {}, customItems = [] } = {}) => {
+  menuGroups.forEach((group) => {
+    group.items = group.items.filter((item) => !item.isCustom);
+    group.items.forEach((item) => { if (item.children) item.children = item.children.filter((child) => !child.isCustom); });
+  });
+  editableMenuItems().forEach((item) => {
+    if (typeof labels[item.id] === "string" && labels[item.id].trim()) item.title = labels[item.id].trim();
+  });
+  const businessGroup = menuGroups.find((group) => group.label === "BUSINESS");
+  customItems.filter((item) => !item.parent_id).forEach((item) => businessGroup.items.push({ ...item, title: item.label, children: [], isCustom: true }));
+  customItems.filter((item) => item.parent_id).forEach((item) => {
+    const parent = editableTopMenuItems().find((candidate) => candidate.id === item.parent_id);
+    if (!parent) return;
+    if (!parent.children) parent.children = [];
+    parent.children.push({ ...item, title: item.label, isCustom: true });
+  });
+};
+
+const loadMenuConfig = async () => {
   try {
     const response = await fetch("/api/menu", { headers: { accept: "application/json" } });
     if (!response.ok) return;
-    const { labels = {} } = await response.json();
-    editableMenuItems().forEach((item) => {
-      if (typeof labels[item.id] === "string" && labels[item.id].trim()) item.title = labels[item.id].trim();
-    });
+    applyMenuConfig(await response.json());
   } catch {}
 };
 
@@ -136,14 +156,16 @@ const renderNavigation = () => {
   $("#mainNav").innerHTML = menuGroups.filter((group) => group.label !== "ADMIN" || currentUser?.role === "admin").map((group) => `
     <section class="nav-section">
       <div class="nav-heading">${group.label}</div>
-      ${group.items.map((item) => `
-        <button class="nav-item ${item.id === currentPage ? "active" : ""}" data-nav="${item.id}" data-has-children="${Boolean(item.children)}">
-          <span class="nav-icon">${item.icon}</span><span>${item.title}</span>${item.children ? '<span class="chevron">›</span>' : ""}
+      ${group.items.map((item) => {
+        const hasChildren = Boolean(item.children?.length);
+        return `
+        <button class="nav-item ${item.id === currentPage ? "active" : ""}" data-nav="${escapeHtml(item.id)}" data-has-children="${hasChildren}">
+          <span class="nav-icon">${escapeHtml(item.icon || "◇")}</span><span>${escapeHtml(item.title)}</span>${hasChildren ? '<span class="chevron">›</span>' : ""}
         </button>
-        ${item.children ? `<div class="submenu" data-submenu="${item.id}"><div>${item.children.map((child) => child.url
+        ${hasChildren ? `<div class="submenu" data-submenu="${escapeHtml(item.id)}"><div>${item.children.map((child) => child.url
           ? `<a data-external="${escapeHtml(child.title)}" data-url="${escapeHtml(child.url)}" href="${escapeHtml(child.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(child.title)}<span style="float:right">↗</span></a>`
           : `<button data-external="${escapeHtml(child.title)}">${escapeHtml(child.title)}<span style="float:right">·</span></button>`).join("")}</div></div>` : ""}
-      `).join("")}
+      `}).join("")}
     </section>
   `).join("");
 
@@ -282,12 +304,29 @@ const renderAdminTab = (tab) => {
   addButton.hidden = true;
   if (tab === "menus") {
     body.innerHTML = `
-      <form id="menuLabelsForm" class="menu-labels-form">
-        <div class="menu-manager-heading"><div><h2>카테고리 이름 관리</h2><p>왼쪽 메뉴에 표시되는 카테고리 이름을 수정합니다. 연결 주소와 권한은 유지됩니다.</p></div><button class="button primary" type="submit">변경사항 저장</button></div>
-        <div class="menu-label-grid">${editableMenuItems().map((item) => `<label><span>${escapeHtml(item.id)}</span><input name="${escapeHtml(item.id)}" value="${escapeHtml(item.title)}" minlength="1" maxlength="40" required /></label>`).join("")}</div>
-        <p id="menuLabelsError" class="form-error"></p>
-      </form>`;
+      <div class="menu-admin-layout">
+        <form id="menuLabelsForm" class="menu-labels-form">
+          <div class="menu-manager-heading"><div><h2>카테고리 이름 관리</h2><p>최상단과 하위 카테고리 이름을 함께 수정합니다. 기존 연결 주소와 권한은 유지됩니다.</p></div><button class="button primary" type="submit">변경사항 저장</button></div>
+          <div class="menu-label-groups">${editableTopMenuItems().map((parent) => `
+            <section class="menu-edit-group">
+              <label class="top-menu-label"><span>최상단 카테고리</span><input name="${escapeHtml(parent.id)}" value="${escapeHtml(parent.title)}" minlength="1" maxlength="40" required /></label>
+              <div class="child-menu-list">${(parent.children || []).length ? parent.children.map((child) => `
+                <label><span>하위 카테고리${child.url ? ` · 연결됨` : ""}</span><input name="${escapeHtml(child.id)}" value="${escapeHtml(child.title)}" minlength="1" maxlength="40" required /></label>`).join("") : '<p class="empty-child-menu">등록된 하위 카테고리가 없습니다.</p>'}</div>
+            </section>`).join("")}</div>
+          <p id="menuLabelsError" class="form-error"></p>
+        </form>
+        <form id="menuCreateForm" class="menu-create-form">
+          <div><span class="eyebrow">NEW CATEGORY</span><h2>카테고리 등록</h2><p>최상단 또는 선택한 카테고리 아래에 새 메뉴를 추가합니다.</p></div>
+          <label>등록 위치<select name="parent_id"><option value="">최상단 카테고리</option>${editableTopMenuItems().map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)} 하위</option>`).join("")}</select></label>
+          <label>카테고리 이름<input name="label" minlength="1" maxlength="40" placeholder="새 카테고리 이름" required /></label>
+          <label>연결 URL <small>선택 · 하위 카테고리용</small><input name="url" type="url" placeholder="https://" /></label>
+          <label>아이콘 <small>선택 · 최상단 카테고리용</small><input name="icon" maxlength="2" placeholder="◇" /></label>
+          <p id="menuCreateError" class="form-error"></p>
+          <button class="button primary full" type="submit">＋ 카테고리 등록</button>
+        </form>
+      </div>`;
     $("#menuLabelsForm").addEventListener("submit", saveMenuLabels);
+    $("#menuCreateForm").addEventListener("submit", createMenuItem);
     return;
   }
   body.innerHTML = `<div class="placeholder-state compact"><div><i>${tab === "permissions" ? "◇" : "☷"}</i><h2>${tab === "permissions" ? "권한 관리" : "감사 로그"}</h2><p>이 기능은 다음 구현 단계에서 연결됩니다.</p></div></div>`;
@@ -304,12 +343,35 @@ const saveMenuLabels = async (event) => {
     const response = await fetch("/api/admin/menu", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ labels }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message);
-    editableMenuItems().forEach((item) => { if (result.labels[item.id]) item.title = result.labels[item.id]; });
+    applyMenuConfig(result);
     renderNavigation();
     $("#breadcrumbText").textContent = "포털 관리";
     showToast("카테고리 이름이 저장되었습니다.");
   } catch (error) {
     $("#menuLabelsError").textContent = error.message || "카테고리 이름 저장에 실패했습니다.";
+  } finally {
+    submit.disabled = false;
+  }
+};
+
+const createMenuItem = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const payload = Object.fromEntries(new FormData(form));
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  $("#menuCreateError").textContent = "";
+  try {
+    const response = await fetch("/api/admin/menu", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    applyMenuConfig(result);
+    renderNavigation();
+    $("#breadcrumbText").textContent = "포털 관리";
+    renderAdminTab("menus");
+    showToast(`${result.item.label} 카테고리가 등록되었습니다.`);
+  } catch (error) {
+    $("#menuCreateError").textContent = error.message || "카테고리 등록에 실패했습니다.";
   } finally {
     submit.disabled = false;
   }
@@ -449,7 +511,7 @@ $("#noticeButton").addEventListener("click", () => showToast("읽지 않은 알�
 const showApp = async () => {
   guestView.hidden = true;
   appView.hidden = false;
-  await loadMenuLabels();
+  await loadMenuConfig();
   const now = new Date();
   $("#todayLabel").textContent = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" }).format(now);
   $(".profile b").textContent = currentUser?.name || "임직원";
