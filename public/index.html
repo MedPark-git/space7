@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#075f51" />
+    <title>MedPark One | 사내 통합 포털</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <section id="guestView" class="guest-shell">
+      <header class="guest-header">
+        <a class="brand" href="#" aria-label="MedPark One 홈">
+          <span class="brand-mark">M</span>
+          <span><b>MedPark One</b><small>WORKPLACE PORTAL</small></span>
+        </a>
+        <div class="guest-actions">
+          <span class="security-badge"><i></i> 임직원 전용 보안 포털</span>
+          <button id="openLogin" class="button primary">로그인</button>
+        </div>
+      </header>
+
+      <main class="guest-main">
+        <div class="hero-copy">
+          <span class="eyebrow">ONE TEAM · ONE WORKSPACE</span>
+          <h1>일의 흐름이<br /><em>하나로 연결됩니다.</em></h1>
+          <p>경영, 영업, 기술 업무부터 일정과 회의록까지.<br />MedPark One에서 더 빠르고 명확하게 연결하세요.</p>
+          <div class="hero-actions">
+            <button id="heroLogin" class="button primary large">포털 시작하기 <span>→</span></button>
+            <span class="support-text">접속 문의 <b>IT 운영팀 · 내선 120</b></span>
+          </div>
+        </div>
+
+        <div class="preview-wrap" aria-label="로그인 후 대시보드 미리보기">
+          <div class="preview-window">
+            <div class="preview-topbar"><span></span><span></span><span></span><b>MEDPARK ONE</b></div>
+            <div class="preview-layout">
+              <div class="preview-sidebar">
+                <div class="line strong"></div><div class="line"></div><div class="line"></div><div class="line short"></div>
+                <div class="line"></div><div class="line short"></div>
+              </div>
+              <div class="preview-content">
+                <div class="preview-heading"><div><b>오늘의 업무</b><span></span></div><i></i></div>
+                <div class="preview-cards"><i></i><i></i><i></i></div>
+                <div class="preview-panel"><div class="mini-calendar"></div><div class="mini-list"><span></span><span></span><span></span><span></span></div></div>
+              </div>
+            </div>
+            <div class="mask-overlay">
+              <div class="lock-icon">⌁</div>
+              <b>로그인 후 모든 업무를 확인하세요</b>
+              <span>민감한 사내 정보는 안전하게 보호됩니다.</span>
+              <button id="maskLogin" class="button white">로그인하여 확인</button>
+            </div>
+          </div>
+          <div class="floating-chip chip-calendar"><b>오늘 일정</b><span>3개의 일정이 있습니다</span></div>
+          <div class="floating-chip chip-map"><i>●</i><b>진행 현황</b><span>국내 · 해외 통합</span></div>
+        </div>
+      </main>
+
+      <footer class="guest-footer"><span>© 2026 MedPark. All rights reserved.</span><span>개인정보처리방침 · 보안정책</span></footer>
+    </section>
+
+    <div id="loginModal" class="modal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal></div>
+      <section class="login-card" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+        <button class="modal-close" data-close-modal aria-label="닫기">×</button>
+        <div class="login-brand-panel">
+          <span class="brand-mark large-mark">M</span>
+          <span class="eyebrow light">MEDPARK WORKPLACE</span>
+          <h2>우리의 모든 업무가<br />한곳에서 연결됩니다.</h2>
+          <p>안전한 사내 계정으로 로그인하고<br />업무에 필요한 모든 시스템을 만나보세요.</p>
+          <div class="secure-points"><span>✓ 권한 기반 메뉴</span><span>✓ 감사 로그</span><span>✓ 안전한 세션</span></div>
+        </div>
+        <form id="loginForm" class="login-form">
+          <div>
+            <span class="eyebrow">WELCOME BACK</span>
+            <h2 id="loginTitle">임직원 로그인</h2>
+            <p>회사에서 발급받은 계정으로 로그인하세요.</p>
+          </div>
+          <label>이메일<input id="email" type="email" autocomplete="username" value="admin@medpark.co.kr" required /></label>
+          <label>비밀번호<span class="password-wrap"><input id="password" type="password" autocomplete="current-password" value="Preview123!" required /><button id="togglePassword" type="button" aria-label="비밀번호 표시">보기</button></span></label>
+          <div class="form-options"><label class="check"><input type="checkbox" /> 이메일 저장</label><a href="#" id="resetLink">비밀번호 재설정</a></div>
+          <p id="loginError" class="form-error"></p>
+          <button class="button primary full large" type="submit"><span class="button-label">로그인</span><span class="spinner"></span></button>
+          <div class="preview-account"><b>미리보기 계정</b><span>admin@medpark.co.kr / Preview123!</span></div>
+        </form>
+      </section>
+    </div>
+
+    <section id="appView" class="app-shell" hidden>
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-brand">
+          <a class="brand inverted" href="#"><span class="brand-mark">M</span><span><b>MedPark One</b><small>WORKPLACE PORTAL</small></span></a>
+          <button id="closeSidebar" class="icon-button mobile-only" aria-label="메뉴 닫기">×</button>
+        </div>
+        <nav id="mainNav" class="nav" aria-label="주 메뉴"></nav>
+        <div class="sidebar-footer">
+          <button class="profile" data-page="profile"><span class="avatar">김</span><span><b>김관리</b><small>경영지원본부 · 관리자</small></span><i>⋮</i></button>
+          <button id="logout" class="logout-button">↗ 로그아웃</button>
+        </div>
+      </aside>
+
+      <div class="app-main">
+        <header class="topbar">
+          <button id="openSidebar" class="icon-button mobile-only" aria-label="메뉴 열기">☰</button>
+          <div class="breadcrumb"><span>MedPark One</span><b id="breadcrumbText">통합 대시보드</b></div>
+          <div class="top-actions">
+            <button class="search-button" id="searchButton">⌕ <span>메뉴 검색</span><kbd>⌘ K</kbd></button>
+            <button class="icon-button notification" id="noticeButton" aria-label="알림">♧<i></i></button>
+            <span class="today" id="todayLabel"></span>
+          </div>
+        </header>
+
+        <main id="pageContent" class="page-content"></main>
+      </div>
+      <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+    </section>
+
+    <dialog id="searchDialog" class="search-dialog">
+      <form method="dialog">
+        <div class="dialog-search"><span>⌕</span><input id="menuSearch" placeholder="메뉴 또는 시스템 검색" autocomplete="off" /><button value="cancel">ESC</button></div>
+        <div id="searchResults" class="search-results"></div>
+      </form>
+    </dialog>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
