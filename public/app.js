@@ -38,12 +38,15 @@ const loginForm = $("#loginForm");
 const pageContent = $("#pageContent");
 const searchDialog = $("#searchDialog");
 const employeeDialog = $("#employeeDialog");
+const quickLinksDialog = $("#quickLinksDialog");
 let currentPage = "dashboard";
 let carouselMode = "calendar";
 let carouselTimer;
 let currentUser = null;
 let employeeCache = [];
 let editingEmployeeId = null;
+let quickLinks = [];
+let quickLinkCatalog = [];
 
 const builtInEditableMenuIds = new Set([
   "management", "management_ar", "management_hr", "management_routine",
@@ -76,6 +79,16 @@ const loadMenuConfig = async () => {
     const response = await fetch("/api/menu", { headers: { accept: "application/json" } });
     if (!response.ok) return;
     applyMenuConfig(await response.json());
+  } catch {}
+};
+
+const loadQuickLinks = async () => {
+  try {
+    const response = await fetch("/api/quick-links", { headers: { accept: "application/json" } });
+    if (!response.ok) return;
+    const result = await response.json();
+    quickLinks = result.links || [];
+    quickLinkCatalog = result.catalog || [];
   } catch {}
 };
 
@@ -212,64 +225,93 @@ const koreaMap = `
     <path fill="#d3e6df" d="M207 315l13 8-7 14-16 5-8-11z"/>
   </svg>`;
 
+const carouselModes = ["calendar", "allo", "global"];
+const carouselMeta = {
+  calendar: ["메드파크 주요 일정", "회사 주요 일정과 오늘의 일정을 함께 확인합니다."],
+  allo: ["MedPark-Allo · 전국 지역별 커버리지", "국내영업 시스템의 지역별 커버리지 구조를 요약합니다."],
+  global: ["Global Market Action Map", "국가별 거래처 FSCT ERP 확정매출 구조를 요약합니다."]
+};
+
 const renderCarousel = () => {
   const body = $("#carouselBody");
   if (!body) return;
   $$('[data-carousel]').forEach((button) => button.classList.toggle("active", button.dataset.carousel === carouselMode));
-  body.innerHTML = carouselMode === "calendar" ? `
-    <div class="calendar-view">
+  const [title, subtitle] = carouselMeta[carouselMode];
+  $("#carouselTitle").textContent = title;
+  $("#carouselSubtitle").textContent = subtitle;
+  if (carouselMode === "calendar") body.innerHTML = `
+    <div class="calendar-view main-calendar-view">
       <div class="calendar-area"><div class="calendar-top"><button>‹</button><b>2026년 8월</b><button>›</button></div><div class="calendar-grid">${renderCalendarDays()}</div></div>
       <aside class="schedule-list"><h3>8월 26일 수요일</h3>
         <div class="schedule-item"><time>09:30 - 10:30</time><b>본부장 주간회의</b><span>8층 대회의실</span></div>
         <div class="schedule-item"><time>13:30 - 14:00</time><b>IT 인프라 점검</b><span>온라인 미팅</span></div>
         <div class="schedule-item"><time>16:00 - 17:00</time><b>포털 구축 리뷰</b><span>프로젝트룸</span></div>
-      </aside>
-    </div>` : `
-    <div class="map-view">
-      <div class="map-stage">${koreaMap}<button class="map-pin pin-one" data-label="수도권 12건"></button><button class="map-pin pin-two" data-label="충청권 7건"></button><button class="map-pin pin-three" data-label="영남권 9건"></button></div>
-      <aside class="map-list"><h3>국내 진행 현황</h3>
-        <div class="map-item"><i></i><div><b>수도권</b><span>최근 업데이트 10분 전</span></div><strong>12건</strong></div>
-        <div class="map-item"><i></i><div><b>충청권</b><span>최근 업데이트 24분 전</span></div><strong>7건</strong></div>
-        <div class="map-item"><i></i><div><b>영남권</b><span>최근 업데이트 32분 전</span></div><strong>9건</strong></div>
-        <div class="map-item"><i style="background:#74b7a5"></i><div><b>호남·제주권</b><span>최근 업데이트 1시간 전</span></div><strong>5건</strong></div>
+        <span class="integration-badge">Google Calendar 연동 준비</span>
       </aside>
     </div>`;
+  else if (carouselMode === "allo") body.innerHTML = `
+    <section class="dashboard-grid allo-dashboard-grid">
+      <div class="coverage-map-stage">${koreaMap}<span class="coverage-dot capital">수도권</span><span class="coverage-dot central">충청·강원</span><span class="coverage-dot south">영남</span><span class="coverage-dot west">호남·제주</span></div>
+      <aside class="coverage-regions"><div class="source-row"><span>연동 전 예시 데이터</span><a href="https://medprk-medpark-allo.mycafe24.ai/" target="_blank" rel="noopener noreferrer">MedPark-Allo 열기 ↗</a></div>
+        <div class="coverage-item"><div><b>수도권</b><span>서울 · 경기 · 인천</span></div><strong>82%</strong><i><em style="width:82%"></em></i></div>
+        <div class="coverage-item"><div><b>충청·강원권</b><span>대전 · 세종 · 강원</span></div><strong>67%</strong><i><em style="width:67%"></em></i></div>
+        <div class="coverage-item"><div><b>영남권</b><span>부산 · 대구 · 울산</span></div><strong>74%</strong><i><em style="width:74%"></em></i></div>
+        <div class="coverage-item"><div><b>호남·제주권</b><span>광주 · 전라 · 제주</span></div><strong>58%</strong><i><em style="width:58%"></em></i></div>
+      </aside>
+    </section>`;
+  else body.innerHTML = `
+    <article class="panel span-12 global-map-panel">
+      <div class="global-market-stage"><div class="global-orbit"><span class="market-point north-america">미국</span><span class="market-point europe">유럽</span><span class="market-point mena">중동</span><span class="market-point asia">아시아</span></div><div class="global-center"><b>FSCT ERP</b><span>확정매출</span></div></div>
+      <aside class="country-sales"><div class="source-row"><span>연동 전 예시 데이터</span><a href="https://medprk-medpark-global-maps.mycafe24.ai/" target="_blank" rel="noopener noreferrer">Global-MAPS 열기 ↗</a></div>
+        <div class="sales-heading"><h3>국가별 거래처 확정매출</h3><small>ERP 데이터 연동 후 실제 값 표시</small></div>
+        <div class="country-row"><i>US</i><div><b>미국</b><span>북미 핵심 시장</span></div><strong>연동 대기</strong></div>
+        <div class="country-row"><i>DE</i><div><b>독일</b><span>유럽 주요 거래처</span></div><strong>연동 대기</strong></div>
+        <div class="country-row"><i>AE</i><div><b>UAE</b><span>중동 주요 거래처</span></div><strong>연동 대기</strong></div>
+        <div class="country-row"><i>JP</i><div><b>일본</b><span>아시아 주요 거래처</span></div><strong>연동 대기</strong></div>
+      </aside>
+    </article>`;
   $("#carouselProgress").innerHTML = "<i></i>";
-  $$('[data-carousel]').forEach((button) => button.onclick = () => {
-    carouselMode = button.dataset.carousel;
-    renderCarousel();
-    startCarousel();
-  });
-  $$(".map-pin").forEach((pin) => pin.addEventListener("click", () => showToast(`${pin.dataset.label} 상세 패널은 지도 API 연동 후 표시됩니다.`)));
+  $$('[data-carousel]').forEach((button) => button.onclick = () => { carouselMode = button.dataset.carousel; renderCarousel(); startCarousel(); });
 };
 
 const startCarousel = () => {
   clearInterval(carouselTimer);
   carouselTimer = setInterval(() => {
-    carouselMode = carouselMode === "calendar" ? "map" : "calendar";
+    carouselMode = carouselModes[(carouselModes.indexOf(carouselMode) + 1) % carouselModes.length];
     renderCarousel();
   }, 30000);
 };
 
+const renderQuickLinks = () => {
+  const list = $("#quickLinksList");
+  if (!list) return;
+  list.innerHTML = quickLinks.map((link) => `<a class="quick-link-compact" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer"><i>${escapeHtml(link.icon)}</i><span>${escapeHtml(link.label)}</span><b>↗</b></a>`).join("") || '<p class="quick-empty">선택한 시스템이 없습니다.</p>';
+};
+
+const openQuickLinksEditor = () => {
+  const selected = new Set(quickLinks.map((link) => link.id));
+  $("#quickLinksOptions").innerHTML = quickLinkCatalog.map((link) => `<label><input type="checkbox" name="system_id" value="${escapeHtml(link.id)}" ${selected.has(link.id) ? "checked" : ""} /><i>${escapeHtml(link.icon)}</i><span><b>${escapeHtml(link.label)}</b><small>${escapeHtml(new URL(link.url).hostname)}</small></span></label>`).join("");
+  $("#quickLinksError").textContent = "";
+  quickLinksDialog.showModal();
+};
+
 const renderDashboard = () => {
+  carouselMode = "calendar";
   pageContent.innerHTML = `
-    <section class="page-heading"><div><span class="eyebrow">OVERVIEW</span><h1>안녕하세요, ${currentUser?.name || "임직원"}님</h1><p>오늘의 주요 일정과 사업 현황을 한눈에 확인하세요.</p></div><span class="live-status"><i></i> 시스템 정상 운영 중</span></section>
-    <section class="dashboard-summary">
-      <div class="metric-stack">
-        <article class="metric-card"><div class="metric-label"><span>오늘의 일정</span><i class="metric-icon">□</i></div><strong>3</strong><small>건 예정</small></article>
-        <article class="metric-card"><div class="metric-label"><span>새 회의록</span><i class="metric-icon">☷</i></div><strong>5</strong><small>건 등록</small></article>
-      </div>
-      <article class="panel quick-panel"><header class="panel-header"><div><h2>자주 찾는 시스템</h2><p>외부 시스템 바로가기</p></div><span>↗</span></header><div class="quick-grid">
-        <a class="quick-link" href="https://medprk-ar-dashboard.mycafe24.ai/" target="_blank" rel="noopener noreferrer"><i>₩</i><b>미수채권</b></a>
-        <a class="quick-link" href="https://medprk-medpark-hr-maps.mycafe24.ai/" target="_blank" rel="noopener noreferrer"><i>♙</i><b>HR</b></a>
-        <a class="quick-link" href="https://medprk-medpark-allo.mycafe24.ai/" target="_blank" rel="noopener noreferrer"><i>◫</i><b>MedPark-Allo</b></a>
-        <a class="quick-link" href="https://medprk-medpark-global-maps.mycafe24.ai/" target="_blank" rel="noopener noreferrer"><i>◎</i><b>Global-MAPS</b></a>
-      </div></article>
-    </section>
-    <article class="panel workspace-panel">
-      <header class="panel-header"><div><h2>워크스페이스 현황</h2><p>캘린더와 진행 지도를 30초마다 자동 전환합니다.</p></div><div class="segmented"><button data-carousel="calendar" class="active">캘린더</button><button data-carousel="map">진행 지도</button></div></header>
-      <div id="carouselBody" class="carousel-body"></div><div id="carouselProgress" class="carousel-progress"><i></i></div>
-    </article>`;
+    <section class="page-heading"><div><span class="eyebrow">OVERVIEW</span><h1>안녕하세요, ${currentUser?.name || "임직원"}님</h1><p>주요 일정과 국내·해외 사업 현황을 한눈에 확인하세요.</p></div><span class="live-status"><i></i> 시스템 정상 운영 중</span></section>
+    <section class="dashboard-top-grid">
+      <article class="panel main-carousel-panel">
+        <header class="panel-header dashboard-carousel-header"><div><h2 id="carouselTitle">메드파크 주요 일정</h2><p id="carouselSubtitle">회사 주요 일정과 오늘의 일정을 함께 확인합니다.</p></div><div class="segmented"><button data-carousel="calendar" class="active">일정</button><button data-carousel="allo">MedPark-Allo</button><button data-carousel="global">Global MAP</button></div></header>
+        <div id="carouselBody" class="carousel-body"></div><div id="carouselProgress" class="carousel-progress"><i></i></div>
+      </article>
+      <aside class="dashboard-side-vertical">
+        <article class="metric-card compact-metric"><i class="metric-icon">□</i><div><span>오늘의 일정</span><strong>3<small>건 예정</small></strong></div></article>
+        <article class="metric-card compact-metric"><i class="metric-icon">☷</i><div><span>새 회의록</span><strong>5<small>건 등록</small></strong></div></article>
+        <article class="panel quick-compact-panel"><header class="panel-header"><div><h2>자주 찾는 시스템</h2><p>나만의 바로가기</p></div><button id="editQuickLinks" class="mini-edit-button">편집</button></header><div id="quickLinksList" class="quick-list-vertical"></div></article>
+      </aside>
+    </section>`;
+  renderQuickLinks();
+  $("#editQuickLinks").addEventListener("click", openQuickLinksEditor);
   renderCarousel();
   startCarousel();
 };
@@ -459,6 +501,32 @@ const updateEmployee = async (id, payload) => {
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
 
 $$('[data-close-employee]').forEach((button) => button.addEventListener("click", () => employeeDialog.close()));
+$$('[data-close-quick-links]').forEach((button) => button.addEventListener("click", () => quickLinksDialog.close()));
+$("#quickLinksForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const ids = [...event.currentTarget.querySelectorAll('input[name="system_id"]:checked')].map((input) => input.value);
+  $("#quickLinksError").textContent = "";
+  if (!ids.length || ids.length > 5) {
+    $("#quickLinksError").textContent = "자주 찾는 시스템을 1개 이상 5개 이하로 선택해 주세요.";
+    return;
+  }
+  try {
+    const response = await fetch("/api/quick-links", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ system_ids: ids })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    quickLinks = result.links || [];
+    quickLinkCatalog = result.catalog || quickLinkCatalog;
+    quickLinksDialog.close();
+    renderQuickLinks();
+    showToast("나만의 자주 찾는 시스템이 저장되었습니다.");
+  } catch (error) {
+    $("#quickLinksError").textContent = error.message || "자주 찾는 시스템 저장에 실패했습니다.";
+  }
+});
 $("#employeeForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -511,7 +579,7 @@ $("#noticeButton").addEventListener("click", () => showToast("읽지 않은 알�
 const showApp = async () => {
   guestView.hidden = true;
   appView.hidden = false;
-  await loadMenuConfig();
+  await Promise.all([loadMenuConfig(), loadQuickLinks()]);
   const now = new Date();
   $("#todayLabel").textContent = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" }).format(now);
   $(".profile b").textContent = currentUser?.name || "임직원";
