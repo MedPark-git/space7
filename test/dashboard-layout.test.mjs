@@ -43,6 +43,20 @@ test("캘린더 7개 요일 열은 좁은 화면에서도 잘리지 않고 상�
   assert.match(css, /@container dashboard-main \(max-width: 700px\)[\s\S]*?\.dashboard-page \.schedule-list \{[^}]*border-top/);
 });
 
+test("일정 전용 화면은 브라우저 폭을 모두 사용하고 가용 폭에 맞춰 자동 재배치된다", async () => {
+  const [css, app] = await Promise.all([
+    readFile(new URL("public/styles.css", root), "utf8"),
+    readFile(new URL("public/app.js", root), "utf8")
+  ]);
+  assert.match(app, /classList\.toggle\("calendar-page", page === "calendar"\)/);
+  assert.match(css, /\.page-content\.calendar-page \{[^}]*width:\s*100%[^}]*max-width:\s*none/);
+  assert.match(css, /\.standalone-calendar-panel \{[^}]*container:\s*standalone-calendar\s*\/\s*inline-size/);
+  assert.match(css, /\.calendar-page \.main-calendar-view \{[^}]*grid-template-columns:\s*minmax\(0,1fr\)\s*clamp\(220px,\s*20vw,\s*320px\)/);
+  assert.match(css, /\.calendar-page \.calendar-grid \{[^}]*grid-template-rows:\s*auto repeat\(6,\s*minmax\(64px,\s*1fr\)\)/);
+  assert.match(css, /@container standalone-calendar \(max-width: 780px\)[\s\S]*?\.calendar-page \.main-calendar-view \{[^}]*grid-template-columns:\s*minmax\(0,1fr\)/);
+  assert.match(css, /@container standalone-calendar \(max-width: 780px\)[\s\S]*?\.calendar-page \.schedule-list \{[^}]*border-top/);
+});
+
 test("캘린더 날짜 선택 시 해당일의 전체 일정 상세가 오른쪽에서 갱신된다", async () => {
   const [css, app] = await Promise.all([
     readFile(new URL("public/styles.css", root), "utf8"),

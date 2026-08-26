@@ -247,6 +247,7 @@ const navigate = (page) => {
   currentPage = page;
   clearInterval(carouselTimer);
   pageContent.classList.toggle("dashboard-page", page === "dashboard");
+  pageContent.classList.toggle("calendar-page", page === "calendar");
   renderNavigation();
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.nav === page));
   const title = menuGroups.flatMap((g) => g.items).find((item) => item.id === page)?.title || "통합 대시보드";
