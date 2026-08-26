@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#075f51" />
     <title>MedPark One | 사내 통합 포털</title>
-    <link rel="stylesheet" href="./styles.css?v=20260826-7" />
+    <link rel="stylesheet" href="./styles.css?v=20260826-8" />
   </head>
   <body>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -142,6 +142,15 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=20260826-7" type="module"></script>
+    <dialog id="quickLinksDialog" class="quick-links-dialog">
+      <form id="quickLinksForm" method="dialog">
+        <header><div><span class="eyebrow">MY SHORTCUTS</span><h2>자주 찾는 시스템 편집</h2><p>나에게 필요한 시스템을 최대 5개까지 선택합니다.</p></div><button type="button" data-close-quick-links aria-label="닫기">×</button></header>
+        <div id="quickLinksOptions" class="quick-links-options"></div>
+        <p id="quickLinksError" class="form-error"></p>
+        <footer><button type="button" class="button secondary" data-close-quick-links>취소</button><button type="submit" class="button primary">내 메뉴 저장</button></footer>
+      </form>
+    </dialog>
+
+    <script src="./app.js?v=20260826-8" type="module"></script>
   </body>
 </html>
