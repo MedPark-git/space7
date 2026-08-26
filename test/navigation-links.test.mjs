@@ -27,3 +27,10 @@ test("카테고리 등록 시 소속 최상단을 선택하고 ADMIN은 제외�
   assert.match(app, /ADMIN은 고정 영역입니다/);
   assert.match(app, /id="menuCreateParent"\s+name="parent_id"/);
 });
+
+test("일정 조회는 COLLABORATION에, 연동 관리는 ADMIN에 분리된다", () => {
+  assert.match(app, /id:\s*"collaboration"[\s\S]*?id:\s*"calendar"[^\n]+title:\s*"일정\(캘린더\)"/);
+  assert.match(app, /id:\s*"admin",\s*label:\s*"ADMIN"[\s\S]*?id:\s*"calendar_admin"[^\n]+title:\s*"일정\(캘린더\)_관리자"/);
+  assert.match(app, /\["admin",\s*"calendar_admin"\]\.includes\(page\)/);
+  assert.match(app, /page === "calendar_admin"\) renderCalendarSettings\(\)/);
+});

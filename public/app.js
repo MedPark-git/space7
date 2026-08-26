@@ -25,7 +25,8 @@ const menuGroups = [
     { id: "calendar", icon: "□", title: "일정(캘린더)" }
   ]},
   { id: "admin", label: "ADMIN", items: [
-    { id: "admin", icon: "⚙", title: "포털 관리" }
+    { id: "admin", icon: "⚙", title: "포털 관리" },
+    { id: "calendar_admin", icon: "□", title: "일정(캘린더)_관리자" }
   ]}
 ];
 
@@ -53,7 +54,7 @@ const builtInEditableMenuIds = new Set([
   "group_workspace", "group_business", "group_collaboration",
   "management", "management_ar", "management_hr", "management_routine",
   "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
-  "technology", "technology_focus", "amarans", "meetings", "calendar"
+  "technology", "technology_focus", "amarans", "meetings", "calendar", "calendar_admin"
 ]);
 const editableTopMenuItems = () => menuGroups.flatMap((group) => group.items).filter((item) => item.id !== "dashboard" && item.id !== "admin");
 const editableMenuItems = () => editableTopMenuItems().flatMap((item) => [item, ...(item.children || [])]);
@@ -237,7 +238,7 @@ const renderNavigation = () => {
 };
 
 const navigate = (page) => {
-  if (page === "admin" && currentUser?.role !== "admin") {
+  if (["admin", "calendar_admin"].includes(page) && currentUser?.role !== "admin") {
     page = "dashboard";
     showToast("관리자 전용 메뉴입니다.");
   }
@@ -251,6 +252,7 @@ const navigate = (page) => {
   if (page === "dashboard") renderDashboard();
   else if (page === "admin") renderAdmin();
   else if (page === "calendar") renderCalendarPage();
+  else if (page === "calendar_admin") renderCalendarSettings();
   else renderPlaceholder(title, page);
   closeSidebar();
 };
@@ -306,7 +308,7 @@ const renderCalendarView = async () => {
     $("#calendarNext").onclick = () => { calendarMonth = new Date(year,month,1); renderCalendarView(); };
   } catch (error) {
     body.innerHTML = `<div class="calendar-error-state"><i>!</i><h3>Google Calendar를 불러오지 못했습니다.</h3><p>${escapeHtml(error.message || "연결 설정을 확인해 주세요.")}</p>${currentUser?.role === "admin" ? '<button id="openCalendarSettings" class="button primary">연결 설정 보기</button>' : ""}</div>`;
-    $("#openCalendarSettings")?.addEventListener("click", () => navigate("calendar"));
+    $("#openCalendarSettings")?.addEventListener("click", () => navigate("calendar_admin"));
   }
 };
 
@@ -826,7 +828,7 @@ const loadCalendarSettingsPage = async () => {
 };
 
 const renderCalendarSettings = () => {
-  pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">CONNECTED SYSTEM</span><h1>일정(캘린더)</h1><p>Google Calendar 일정 조회와 인증 방식을 관리합니다.</p></div><button id="backToDashboard" class="button secondary">일정으로 돌아가기</button></section><section class="content-panel calendar-settings-panel"><div id="calendarSettingsHost">${currentUser?.role === "admin" ? '<div class="calendar-loading"><span class="spinner"></span><p>연결 설정을 불러오는 중입니다.</p></div>' : '<div class="placeholder-state"><div><i>□</i><h2>Google Calendar</h2><p>연결 설정은 관리자만 변경할 수 있습니다.</p></div></div>'}</div></section>`;
+  pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">ADMINISTRATION</span><h1>일정(캘린더)_관리자</h1><p>Google Calendar 일정 조회와 인증 방식을 관리합니다.</p></div><button id="backToDashboard" class="button secondary">일정으로 돌아가기</button></section><section class="content-panel calendar-settings-panel"><div id="calendarSettingsHost">${currentUser?.role === "admin" ? '<div class="calendar-loading"><span class="spinner"></span><p>연결 설정을 불러오는 중입니다.</p></div>' : '<div class="placeholder-state"><div><i>□</i><h2>Google Calendar</h2><p>연결 설정은 관리자만 변경할 수 있습니다.</p></div></div>'}</div></section>`;
   $("#backToDashboard").addEventListener("click", () => navigate("calendar"));
   if (currentUser?.role === "admin") loadCalendarSettingsPage();
 };
@@ -835,7 +837,7 @@ const renderCalendarPage = () => {
   pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">COLLABORATION</span><h1>일정(캘린더)</h1><p>메드파크 주요 일정을 월별로 확인합니다.</p></div>${currentUser?.role === "admin" ? '<button id="openCalendarAdmin" class="button secondary">연결 설정</button>' : ""}</section><section class="panel standalone-calendar-panel"><div id="carouselBody" class="carousel-body"></div></section>`;
   carouselMode = "calendar";
   renderCalendarView();
-  $("#openCalendarAdmin")?.addEventListener("click", renderCalendarSettings);
+  $("#openCalendarAdmin")?.addEventListener("click", () => navigate("calendar_admin"));
 };
 
 const openSidebar = () => { $("#sidebar").classList.add("open"); $("#sidebarBackdrop").classList.add("open"); };

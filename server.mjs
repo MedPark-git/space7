@@ -22,7 +22,7 @@ const editableMenuIds = new Set([
   "group_workspace", "group_business", "group_collaboration",
   "management", "management_ar", "management_hr", "management_routine",
   "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
-  "technology", "technology_focus", "amarans", "meetings", "calendar"
+  "technology", "technology_focus", "amarans", "meetings", "calendar", "calendar_admin"
 ]);
 const builtInTopMenuIds = new Set(["management", "marketing", "technology", "amarans", "meetings", "calendar"]);
 const menuGroupIds = ["workspace", "business", "collaboration"];
@@ -175,6 +175,25 @@ const initDatabase = async () => {
     await menuStructureMigration.query("ROLLBACK");
     throw error;
   } finally { menuStructureMigration.release(); }
+  const calendarMenuMigration = await pool.connect();
+  try {
+    await calendarMenuMigration.query("BEGIN");
+    const migration = await calendarMenuMigration.query("INSERT INTO portal_app_migrations (id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING id", ["20260826_calendar_admin_menu_v1"]);
+    if (migration.rowCount) {
+      await calendarMenuMigration.query(
+        "INSERT INTO portal_menu_labels (menu_id,label) VALUES ($1,$2) ON CONFLICT (menu_id) DO UPDATE SET label=EXCLUDED.label,updated_at=now()",
+        ["calendar_admin","일정(캘린더)_관리자"]
+      );
+      await calendarMenuMigration.query(
+        "INSERT INTO portal_menu_order (menu_id,parent_id,item_order) VALUES ($1,$2,$3) ON CONFLICT (menu_id) DO UPDATE SET parent_id=EXCLUDED.parent_id,item_order=EXCLUDED.item_order,updated_at=now()",
+        ["calendar","collaboration",2]
+      );
+    }
+    await calendarMenuMigration.query("COMMIT");
+  } catch (error) {
+    await calendarMenuMigration.query("ROLLBACK");
+    throw error;
+  } finally { calendarMenuMigration.release(); }
   const count = Number((await pool.query("SELECT count(*)::int AS count FROM users WHERE status::text = 'active' AND role::text = 'admin'")).rows[0].count);
   if (count === 0) {
     await pool.query(`INSERT INTO users (id,username,email,password_hash,name,employee_no,department,role,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [randomUUID(), "admin", null, await hashPassword("Preview123!"), "김관리", "M001", "경영지원본부", "admin", "active"]);
