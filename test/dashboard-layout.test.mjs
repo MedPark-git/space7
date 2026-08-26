@@ -67,7 +67,7 @@ test("30초 순환 패널은 인증 확인된 Allo·Global 지도 구조와 원�
   assert.doesNotMatch(app, /source-password|source-username|관리자 비밀번호/);
 });
 
-test("Allo·Global 시각화는 확인된 원본 지도 이미지와 정확한 반응형 크롭을 사용한다", async () => {
+test("Allo·Global 시각화는 확인된 원본 지도 이미지의 지도 영역을 반응형으로 크롭한다", async () => {
   const [css, app, alloImage, globalImage] = await Promise.all([
     readFile(new URL("public/styles.css", root), "utf8"),
     readFile(new URL("public/app.js", root), "utf8"),
@@ -79,8 +79,30 @@ test("Allo·Global 시각화는 확인된 원본 지도 이미지와 정확한 �
   assert.match(app, /assets\/medpark-allo-coverage\.png/);
   assert.match(app, /assets\/global-market-action-map\.png/);
   assert.doesNotMatch(app, /const koreaMap|const worldMap|coverageMarkers|globalMarketPoints/);
-  assert.match(css, /\.allo-source-crop \{[^}]*2\.0703/);
-  assert.match(css, /\.global-source-crop \{[^}]*2\.65/);
-  assert.match(css, /\.source-map-crop img \{[^}]*width:\s*100%[^}]*height:\s*auto/);
+  assert.match(css, /\.allo-source-crop \{[^}]*1\.6355/);
+  assert.match(css, /\.global-source-crop \{[^}]*1\.99/);
+  assert.match(css, /\.allo-source-crop img \{[^}]*top:\s*-36\.57%[^}]*width:\s*126\.58%/);
+  assert.match(css, /\.global-source-crop img \{[^}]*left:\s*-2\.41%[^}]*top:\s*-45\.7%[^}]*width:\s*145\.15%/);
   assert.match(css, /@media \(max-width: 820px\)[\s\S]*?\.source-map-crop \{ width: 100%; height: 100%; \}/);
+});
+
+test("국내지도 지역과 세계지도 국가를 클릭하면 선택 상태와 상세 정보가 갱신된다", async () => {
+  const [css, app] = await Promise.all([
+    readFile(new URL("public/styles.css", root), "utf8"),
+    readFile(new URL("public/app.js", root), "utf8")
+  ]);
+  assert.match(app, /const alloRegionDetails = \[/);
+  assert.match(app, /const globalCountryDetails = \[/);
+  assert.match(app, /data-allo-region="\$\{region\.id\}"/);
+  assert.match(app, /data-global-country="\$\{country\.id\}"/);
+  assert.match(app, /button\.addEventListener\("click", \(\) => selectAlloRegion\(button\.dataset\.alloRegion\)\)/);
+  assert.match(app, /button\.addEventListener\("click", \(\) => selectGlobalCountry\(button\.dataset\.globalCountry\)\)/);
+  assert.match(app, /target\.innerHTML = alloMapDetailMarkup\(region\)/);
+  assert.match(app, /target\.innerHTML = globalMapDetailMarkup\(country\)/);
+  assert.match(app, /확보 타깃/);
+  assert.match(app, /미결·후속조치/);
+  assert.match(css, /\.map-hotspot[^}]*position:\s*absolute/);
+  assert.match(css, /\.map-hotspot:hover::after, \.map-hotspot:focus-visible::after/);
+  assert.match(css, /\.map-detail-selector button:hover, \.map-detail-selector button\.active/);
+  assert.match(css, /@media \(max-width: 820px\)[\s\S]*?\.source-map-body \{ grid-template-columns: 1fr; overflow: visible; \}/);
 });
