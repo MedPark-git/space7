@@ -43,6 +43,7 @@ let currentPage = "dashboard";
 let carouselMode = "calendar";
 let carouselTimer;
 let currentUser = null;
+let calendarMonth = new Date();
 let employeeCache = [];
 let editingEmployeeId = null;
 let quickLinks = [];
@@ -203,20 +204,64 @@ const navigate = (page) => {
   $("#breadcrumbText").textContent = title;
   if (page === "dashboard") renderDashboard();
   else if (page === "admin") renderAdmin();
+  else if (page === "calendar") renderCalendarSettings();
   else renderPlaceholder(title, page);
   closeSidebar();
 };
 
-const renderCalendarDays = () => {
+const calendarKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+const eventDateKey = (event) => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(event.start || "")) return event.start;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(event.start));
+};
+const renderCalendarDays = (events = []) => {
   const heads = ["일", "월", "화", "수", "목", "금", "토"].map((d) => `<div class="day-head">${d}</div>`).join("");
-  const days = Array.from({ length: 35 }, (_, index) => {
-    const value = index < 5 ? 27 + index : index - 4;
-    const muted = index < 5 || index > 34;
-    const today = value === 26 && !muted;
-    const event = value === 26 ? '<span class="event-dot">본부장 주간회의</span>' : value === 28 ? '<span class="event-dot">신규 입사자 안내</span>' : "";
-    return `<div class="${muted ? "muted-day" : ""} ${today ? "today-day" : ""}">${value}${event}</div>`;
+  const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+  const gridStart = new Date(first); gridStart.setDate(first.getDate() - first.getDay());
+  const todayKey = calendarKey(new Date());
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart); date.setDate(gridStart.getDate() + index);
+    const key = calendarKey(date);
+    const dayEvents = events.filter((event) => eventDateKey(event) === key);
+    const muted = date.getMonth() !== calendarMonth.getMonth();
+    return `<div class="${muted ? "muted-day" : ""} ${key === todayKey ? "today-day" : ""}">${date.getDate()}${dayEvents.slice(0,2).map((event) => `<span class="event-dot">${escapeHtml(event.title)}</span>`).join("")}${dayEvents.length > 2 ? `<small class="more-events">+${dayEvents.length - 2}</small>` : ""}</div>`;
   }).join("");
   return heads + days;
+};
+
+const renderCalendarView = async () => {
+  const body = $("#carouselBody");
+  if (!body || carouselMode !== "calendar") return;
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth() + 1;
+  body.innerHTML = `<div class="calendar-loading"><span class="spinner"></span><p>Google Calendar 일정을 불러오는 중입니다.</p></div>`;
+  try {
+    const response = await fetch(`/api/calendar/events?month=${year}-${String(month).padStart(2,"0")}`, { headers: { accept: "application/json" } });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    const events = result.events || [];
+    const today = new Date();
+    const focusDate = today.getFullYear() === year && today.getMonth() === month - 1 ? today : new Date(year,month - 1,1);
+    const focusKey = calendarKey(focusDate);
+    const focusEvents = events.filter((event) => eventDateKey(event) === focusKey);
+    const focusLabel = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(focusDate);
+    const scheduleHtml = focusEvents.length ? focusEvents.slice(0,5).map((event) => {
+      const start = event.all_day ? "종일" : new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.start));
+      const end = event.all_day || !event.end ? "" : new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.end));
+      return `<div class="schedule-item"><time>${escapeHtml(start)}${end ? ` - ${escapeHtml(end)}` : ""}</time><b>${escapeHtml(event.title)}</b><span>${escapeHtml(event.location || "Google Calendar")}</span></div>`;
+    }).join("") : '<p class="calendar-empty">등록된 일정이 없습니다.</p>';
+    body.innerHTML = `<div class="calendar-view main-calendar-view">
+      <div class="calendar-area"><div class="calendar-top"><button id="calendarPrev" aria-label="이전 달">‹</button><b>${year}년 ${month}월</b><button id="calendarNext" aria-label="다음 달">›</button></div><div class="calendar-grid">${renderCalendarDays(events)}</div></div>
+      <aside class="schedule-list"><h3>${focusLabel}</h3>${scheduleHtml}<span class="integration-badge ${result.connected ? "connected" : "waiting"}">${result.connected ? `Google Calendar 연결됨 · ${events.length}건` : escapeHtml(result.message || "연결 설정 필요")}</span></aside>
+    </div>`;
+    const todayCount = $("#todayScheduleCount");
+    if (todayCount && today.getFullYear() === year && today.getMonth() === month - 1) todayCount.textContent = focusEvents.length;
+    $("#calendarPrev").onclick = () => { calendarMonth = new Date(year,month - 2,1); renderCalendarView(); };
+    $("#calendarNext").onclick = () => { calendarMonth = new Date(year,month,1); renderCalendarView(); };
+  } catch (error) {
+    body.innerHTML = `<div class="calendar-error-state"><i>!</i><h3>Google Calendar를 불러오지 못했습니다.</h3><p>${escapeHtml(error.message || "연결 설정을 확인해 주세요.")}</p>${currentUser?.role === "admin" ? '<button id="openCalendarSettings" class="button primary">연결 설정 보기</button>' : ""}</div>`;
+    $("#openCalendarSettings")?.addEventListener("click", () => navigate("calendar"));
+  }
 };
 
 const koreaMap = `
@@ -239,16 +284,7 @@ const renderCarousel = () => {
   const [title, subtitle] = carouselMeta[carouselMode];
   $("#carouselTitle").textContent = title;
   $("#carouselSubtitle").textContent = subtitle;
-  if (carouselMode === "calendar") body.innerHTML = `
-    <div class="calendar-view main-calendar-view">
-      <div class="calendar-area"><div class="calendar-top"><button>‹</button><b>2026년 8월</b><button>›</button></div><div class="calendar-grid">${renderCalendarDays()}</div></div>
-      <aside class="schedule-list"><h3>8월 26일 수요일</h3>
-        <div class="schedule-item"><time>09:30 - 10:30</time><b>본부장 주간회의</b><span>8층 대회의실</span></div>
-        <div class="schedule-item"><time>13:30 - 14:00</time><b>IT 인프라 점검</b><span>온라인 미팅</span></div>
-        <div class="schedule-item"><time>16:00 - 17:00</time><b>포털 구축 리뷰</b><span>프로젝트룸</span></div>
-        <span class="integration-badge">Google Calendar 연동 준비</span>
-      </aside>
-    </div>`;
+  if (carouselMode === "calendar") renderCalendarView();
   else if (carouselMode === "allo") body.innerHTML = `
     <section class="dashboard-grid allo-dashboard-grid">
       <div class="coverage-map-stage">${koreaMap}<span class="coverage-dot capital">수도권</span><span class="coverage-dot central">충청·강원</span><span class="coverage-dot south">영남</span><span class="coverage-dot west">호남·제주</span></div>
@@ -305,7 +341,7 @@ const renderDashboard = () => {
         <div id="carouselBody" class="carousel-body"></div><div id="carouselProgress" class="carousel-progress"><i></i></div>
       </article>
       <aside class="dashboard-side-vertical">
-        <article class="metric-card compact-metric"><i class="metric-icon">□</i><div><span>오늘의 일정</span><strong>3<small>건 예정</small></strong></div></article>
+        <article class="metric-card compact-metric"><i class="metric-icon">□</i><div><span>오늘의 일정</span><strong><b id="todayScheduleCount">0</b><small>건 예정</small></strong></div></article>
         <article class="metric-card compact-metric"><i class="metric-icon">☷</i><div><span>새 회의록</span><strong>5<small>건 등록</small></strong></div></article>
         <article class="panel quick-compact-panel"><header class="panel-header"><div><h2>자주 찾는 시스템</h2><p>나만의 바로가기</p></div><button id="editQuickLinks" class="mini-edit-button">편집</button></header><div id="quickLinksList" class="quick-list-vertical"></div></article>
       </aside>
@@ -554,6 +590,87 @@ const renderPlaceholder = (title, icon) => {
   $("#configButton").addEventListener("click", () => showToast("보안을 위해 인증정보는 배포 환경변수로 등록합니다."));
 };
 
+const calendarSettingsMarkup = (settings) => `
+  <section class="calendar-settings-layout">
+    <article class="calendar-connection-card">
+      <span class="connection-light ${settings.connected ? "on" : ""}"></span>
+      <div><span>연결 상태</span><b>${settings.connected ? "Google Calendar 연결됨" : settings.configured ? "설정 저장됨 · 연결 확인 필요" : "연결되지 않음"}</b><small>${escapeHtml(settings.calendar_id || "medpark.remote@gmail.com")}</small></div>
+    </article>
+    <form id="calendarSettingsForm" class="calendar-settings-form">
+      <div class="settings-section-heading"><span class="eyebrow">GOOGLE CALENDAR</span><h2>연결 방식 설정</h2><p>API 키는 공개 캘린더용이며, 비공개 캘린더는 OAuth 2.0 승인이 필요합니다.</p></div>
+      <label>연결 방식<select name="mode" id="calendarMode"><option value="api_key" ${settings.mode !== "oauth" ? "selected" : ""}>API 키 · 공개 캘린더</option><option value="oauth" ${settings.mode === "oauth" ? "selected" : ""}>OAuth 2.0 · 비공개 캘린더</option></select></label>
+      <label>Google 캘린더 ID<input name="calendar_id" value="${escapeHtml(settings.calendar_id || "medpark.remote@gmail.com")}" maxlength="255" required /><small>기본 캘린더는 보통 Google 계정 이메일과 같습니다.</small></label>
+      <div id="apiKeyFields" class="calendar-mode-fields">
+        <label>Calendar API 키<input name="api_key" type="password" autocomplete="new-password" placeholder="${settings.api_key_saved ? "저장된 API 키 유지" : "AIza..."}" /><small>Google Cloud에서 Calendar API를 활성화하고 생성한 키를 입력합니다.</small></label>
+      </div>
+      <div id="oauthFields" class="calendar-mode-fields">
+        <label>OAuth 2.0 Client ID<input name="oauth_client_id" value="${escapeHtml(settings.oauth_client_id || "")}" placeholder="...apps.googleusercontent.com" /><small>애플리케이션 유형은 ‘웹 애플리케이션’으로 생성합니다.</small></label>
+        <label>OAuth 2.0 Client Secret<input name="oauth_client_secret" type="password" autocomplete="new-password" placeholder="${settings.oauth_client_secret_saved ? "저장된 Client Secret 유지" : "GOCSPX-..."}" /></label>
+        <label>승인된 리디렉션 URI<input value="${escapeHtml(settings.redirect_uri)}" readonly /><small>Google Cloud OAuth 클라이언트에 이 주소를 정확히 등록해야 합니다.</small></label>
+        <label>요청 권한<input value="읽기 전용 · calendar.readonly" readonly /></label>
+      </div>
+      <p id="calendarSettingsError" class="form-error"></p>
+      <footer><button type="button" id="testCalendar" class="button secondary">연결 테스트</button><button type="submit" class="button primary">설정 저장</button><button type="button" id="authorizeCalendar" class="button primary">Google 계정 승인</button></footer>
+    </form>
+  </section>`;
+
+const updateCalendarModeFields = () => {
+  const mode = $("#calendarMode")?.value;
+  if (!mode) return;
+  $("#apiKeyFields").hidden = mode !== "api_key";
+  $("#oauthFields").hidden = mode !== "oauth";
+  $("#authorizeCalendar").hidden = mode !== "oauth";
+};
+
+const loadCalendarSettingsPage = async () => {
+  const host = $("#calendarSettingsHost");
+  if (!host) return;
+  try {
+    const response = await fetch("/api/admin/calendar/settings", { headers: { accept: "application/json" } });
+    const settings = await response.json();
+    if (!response.ok) throw new Error(settings.message);
+    host.innerHTML = calendarSettingsMarkup(settings);
+    updateCalendarModeFields();
+    $("#calendarMode").addEventListener("change", updateCalendarModeFields);
+    $("#calendarSettingsForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const payload = Object.fromEntries(new FormData(event.currentTarget));
+      $("#calendarSettingsError").textContent = "";
+      try {
+        const saveResponse = await fetch("/api/admin/calendar/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        const result = await saveResponse.json();
+        if (!saveResponse.ok) throw new Error(result.message);
+        showToast("Google Calendar 연결 설정이 안전하게 저장되었습니다.");
+        await loadCalendarSettingsPage();
+      } catch (error) { $("#calendarSettingsError").textContent = error.message || "설정 저장에 실패했습니다."; }
+    });
+    $("#testCalendar").addEventListener("click", async () => {
+      $("#calendarSettingsError").textContent = "";
+      try {
+        const testResponse = await fetch("/api/admin/calendar/test", { method: "POST" });
+        const result = await testResponse.json();
+        if (!testResponse.ok) throw new Error(result.message);
+        showToast(result.message);
+      } catch (error) { $("#calendarSettingsError").textContent = error.message || "연결 테스트에 실패했습니다."; }
+    });
+    $("#authorizeCalendar").addEventListener("click", async () => {
+      $("#calendarSettingsError").textContent = "";
+      try {
+        const authResponse = await fetch("/api/admin/calendar/oauth/start", { method: "POST" });
+        const result = await authResponse.json();
+        if (!authResponse.ok) throw new Error(result.message);
+        location.assign(result.authorization_url);
+      } catch (error) { $("#calendarSettingsError").textContent = error.message || "Google 승인을 시작하지 못했습니다."; }
+    });
+  } catch (error) { host.innerHTML = `<div class="calendar-error-state"><i>!</i><h3>연결 설정을 불러오지 못했습니다.</h3><p>${escapeHtml(error.message || "다시 시도해 주세요.")}</p></div>`; }
+};
+
+const renderCalendarSettings = () => {
+  pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">CONNECTED SYSTEM</span><h1>일정(캘린더)</h1><p>Google Calendar 일정 조회와 인증 방식을 관리합니다.</p></div><button id="backToDashboard" class="button secondary">대시보드로 돌아가기</button></section><section class="content-panel calendar-settings-panel"><div id="calendarSettingsHost">${currentUser?.role === "admin" ? '<div class="calendar-loading"><span class="spinner"></span><p>연결 설정을 불러오는 중입니다.</p></div>' : '<div class="placeholder-state"><div><i>□</i><h2>Google Calendar</h2><p>연결 설정은 관리자만 변경할 수 있습니다.</p></div></div>'}</div></section>`;
+  $("#backToDashboard").addEventListener("click", () => navigate("dashboard"));
+  if (currentUser?.role === "admin") loadCalendarSettingsPage();
+};
+
 const openSidebar = () => { $("#sidebar").classList.add("open"); $("#sidebarBackdrop").classList.add("open"); };
 const closeSidebar = () => { $("#sidebar").classList.remove("open"); $("#sidebarBackdrop").classList.remove("open"); };
 $("#openSidebar").addEventListener("click", openSidebar);
@@ -586,7 +703,12 @@ const showApp = async () => {
   $(".profile small").textContent = `${currentUser?.department || "소속 미지정"} · ${currentUser?.role === "admin" ? "관리자" : "임직원"}`;
   $(".profile .avatar").textContent = (currentUser?.name || "M").slice(0, 1);
   renderNavigation();
-  navigate("dashboard");
+  const calendarResult = new URLSearchParams(location.search).get("calendar");
+  navigate(calendarResult && currentUser?.role === "admin" ? "calendar" : "dashboard");
+  if (calendarResult) {
+    showToast(calendarResult === "connected" ? "Google Calendar 계정 승인이 완료되었습니다." : "Google Calendar 계정 승인이 취소되었습니다.");
+    history.replaceState({}, "", location.pathname);
+  }
 };
 
 setupSearch();
