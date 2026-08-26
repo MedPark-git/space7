@@ -1,0 +1,14 @@
+﻿{
+  "name": "medpark-one-preview",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MedPark One internal portal preview",
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node --check server.mjs && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
