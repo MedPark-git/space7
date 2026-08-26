@@ -112,19 +112,27 @@ const createUser = async (input, actor, ip) => {
 const updateUser = async (id, input, actor, ip) => {
   const existing = pool ? (await pool.query("SELECT * FROM users WHERE id = $1", [id])).rows[0] : memory.users.get(id);
   if (!existing) throw Object.assign(new Error("계정을 찾을 수 없습니다."), { status: 404 });
+  const has = (key) => Object.prototype.hasOwnProperty.call(input, key);
+  const name = has("name") ? String(input.name || "").trim() : existing.name;
+  const employeeNo = has("employee_no") ? String(input.employee_no || "").trim() || null : existing.employee_no;
+  const department = has("department") ? String(input.department || "").trim() || null : existing.department;
+  const email = has("email") ? String(input.email || "").trim() || null : existing.email;
   const status = input.status === "terminated" ? "terminated" : input.status === "active" ? "active" : existing.status;
   const role = input.role === "admin" ? "admin" : input.role === "basic" ? "basic" : existing.role;
+  if (!name) throw Object.assign(new Error("성명을 입력해 주세요."), { status: 400 });
+  if (actor.id === id && role !== "admin") throw Object.assign(new Error("현재 로그인한 관리자의 권한은 해제할 수 없습니다."), { status: 400 });
   if (input.password && String(input.password).length < 8) throw Object.assign(new Error("비밀번호는 8자 이상이어야 합니다."), { status: 400 });
   const passwordHash = input.password ? await hashPassword(String(input.password)) : existing.password_hash;
+  const changes = { name, employee_no: employeeNo, department, email, role, status, password_reset: Boolean(input.password) };
   if (pool) {
-    const row = (await pool.query(`UPDATE users SET status=$2, role=$3, password_hash=$4, password_changed_at=CASE WHEN $5 THEN now() ELSE password_changed_at END, terminated_at=CASE WHEN $2::text='terminated' THEN now() ELSE NULL END, updated_at=now() WHERE id=$1 RETURNING *`, [id,status,role,passwordHash,Boolean(input.password)])).rows[0];
+    const row = (await pool.query(`UPDATE users SET name=$2, employee_no=$3, department=$4, email=$5, status=$6, role=$7, password_hash=$8, password_changed_at=CASE WHEN $9 THEN now() ELSE password_changed_at END, terminated_at=CASE WHEN $6::text='terminated' THEN now() ELSE NULL END, updated_at=now() WHERE id=$1 RETURNING *`, [id,name,employeeNo,department,email,status,role,passwordHash,Boolean(input.password)])).rows[0];
     if (status === "terminated" || input.password) await pool.query("DELETE FROM portal_sessions WHERE user_id=$1", [id]);
-    await writeAudit(actor.id, "user.update", "user", id, { status, role, password_reset: Boolean(input.password) }, ip);
+    await writeAudit(actor.id, "user.update", "user", id, changes, ip);
     return publicUser(row);
   }
-  Object.assign(existing, { status, role, password_hash: passwordHash, terminated_at: status === "terminated" ? new Date().toISOString() : null });
+  Object.assign(existing, { name, employee_no: employeeNo, department, email, status, role, password_hash: passwordHash, terminated_at: status === "terminated" ? new Date().toISOString() : null });
   if (status === "terminated" || input.password) for (const [token, session] of memory.sessions) if (session.userId === id) memory.sessions.delete(token);
-  await writeAudit(actor.id, "user.update", "user", id, { status, role, password_reset: Boolean(input.password) }, ip);
+  await writeAudit(actor.id, "user.update", "user", id, changes, ip);
   return publicUser(existing);
 };
 
