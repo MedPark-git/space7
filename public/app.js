@@ -332,6 +332,66 @@ const renderCalendarView = async () => {
   }
 };
 
+const alloRegionDetails = [
+  { id: "all", name: "전국", secured: 122, total: 780, coverage: 16 },
+  { id: "seoul", name: "서울", secured: 22, total: 150, coverage: 15, x: 42.7, y: 23.3 },
+  { id: "incheon", name: "인천", secured: 3, total: 44, coverage: 7, x: 40.7, y: 24.2 },
+  { id: "gyeonggi", name: "경기", secured: 16, total: 170, coverage: 9, x: 44.2, y: 27.4 },
+  { id: "gangwon", name: "강원", secured: 0, total: 20, coverage: 0, x: 53.9, y: 18.4 },
+  { id: "chungbuk", name: "충북", secured: 3, total: 22, coverage: 14, x: 50.8, y: 37.6 },
+  { id: "chungnam", name: "충남", secured: 1, total: 26, coverage: 4, x: 42.2, y: 40.2 },
+  { id: "daejeon", name: "대전", secured: 6, total: 20, coverage: 30, x: 47.3, y: 43.5 },
+  { id: "sejong", name: "세종시", secured: 0, total: 1, coverage: 0, x: 46.1, y: 37.6 },
+  { id: "gyeongbuk", name: "경북", secured: 15, total: 29, coverage: 52, x: 58.2, y: 42.5 },
+  { id: "daegu", name: "대구", secured: 37, total: 57, coverage: 65, x: 57.1, y: 50.4 },
+  { id: "jeonbuk", name: "전북", secured: 0, total: 28, coverage: 0, x: 43.8, y: 52.9 },
+  { id: "gyeongnam", name: "경남", secured: 2, total: 62, coverage: 3, x: 53.2, y: 58.1 },
+  { id: "ulsan", name: "울산", secured: 7, total: 13, coverage: 54, x: 61.8, y: 55.5 },
+  { id: "busan", name: "부산", secured: 10, total: 65, coverage: 15, x: 61.4, y: 62.5 },
+  { id: "gwangju", name: "광주", secured: 0, total: 35, coverage: 0, x: 43, y: 64.4 },
+  { id: "jeonnam", name: "전남", secured: 0, total: 31, coverage: 0, x: 40.7, y: 68.9 },
+  { id: "jeju", name: "제주", secured: 0, total: 7, coverage: 0, x: 39.5, y: 90.7 }
+];
+
+const globalCountryDetails = [
+  { id: "sa", name: "사우디아라비아", english: "Saudi Arabia", region: "중동", partners: 6, status: "영업 추진", fcst: "₩0", erp: "₩0", followUp: "1건", x: 62.5, y: 41.8 },
+  { id: "us", name: "미국", english: "United States", region: "북미", partners: 3, status: "영업 추진", fcst: "원본 조회", erp: "원본 조회", followUp: "-", x: 23.1, y: 33.3 },
+  { id: "de", name: "독일", english: "Germany", region: "유럽", partners: 5, status: "거래처 등록", fcst: "원본 조회", erp: "원본 조회", followUp: "-", x: 53.6, y: 23.4 },
+  { id: "gb", name: "영국", english: "United Kingdom", region: "유럽", partners: 1, status: "거래처 등록", fcst: "원본 조회", erp: "원본 조회", followUp: "-", x: 50.2, y: 19.2 },
+  { id: "cn", name: "중국", english: "China", region: "아시아", partners: 0, status: "영업 추진", fcst: "원본 조회", erp: "원본 조회", followUp: "-", x: 79.1, y: 33.3 },
+  { id: "in", name: "인도", english: "India", region: "아시아", partners: 2, status: "영업 추진", fcst: "원본 조회", erp: "원본 조회", followUp: "-", x: 72.8, y: 48.9 },
+  { id: "jp", name: "일본", english: "Japan", region: "아시아", partners: 0, status: "거래처 등록", fcst: "원본 조회", erp: "원본 조회", followUp: "-", x: 87.5, y: 34 },
+  { id: "au", name: "호주", english: "Australia", region: "오세아니아", partners: 1, status: "거래처 등록", fcst: "원본 조회", erp: "원본 조회", followUp: "-", x: 87, y: 74.6 },
+  { id: "br", name: "브라질", english: "Brazil", region: "남미", partners: 1, status: "거래처 등록", fcst: "원본 조회", erp: "원본 조회", followUp: "-", x: 29.5, y: 63.7 }
+];
+
+const alloMapDetailMarkup = (region) => {
+  const uncovered = Math.max(region.total - region.secured, 0);
+  return `<div class="map-detail-heading"><span>REGIONAL COVERAGE</span><h3>${region.name}</h3><small>확보 ${region.secured} / 전체 시장 ${region.total}</small></div>
+    <div class="map-detail-score"><strong>${region.coverage}%</strong><span>지역 커버리지</span><i><em style="width:${region.coverage}%"></em></i></div>
+    <div class="map-detail-metrics"><div><span>확보 타깃</span><b>${region.secured}</b></div><div><span>미확보</span><b>${uncovered}</b></div><div><span>전체 시장</span><b>${region.total}</b></div><div><span>커버리지</span><b>${region.coverage}%</b></div></div>
+    <p class="map-detail-note">지도 또는 아래 지역을 선택하면 해당 지역의 요약 정보가 표시됩니다. 병원별 상세 내용은 원본 시스템에서 확인할 수 있습니다.</p>`;
+};
+
+const globalMapDetailMarkup = (country) => `<div class="map-detail-heading global"><span>${country.region}</span><h3>${country.name}</h3><small>${country.english} · ${country.status}</small></div>
+  <div class="map-detail-metrics global"><div><span>거래처</span><b>${country.partners}</b></div><div><span>진행 상태</span><b>${country.status}</b></div><div><span>전체 FCST</span><b>${country.fcst}</b></div><div><span>ERP 확정</span><b>${country.erp}</b></div></div>
+  <div class="map-detail-followup"><span>미결·후속조치</span><b>${country.followUp}</b></div>
+  <p class="map-detail-note">국가 마커 또는 아래 국가를 선택하면 요약 정보가 변경됩니다. 거래처·매출 상세는 원본 시스템에서 확인할 수 있습니다.</p>`;
+
+const selectAlloRegion = (id) => {
+  const region = alloRegionDetails.find((item) => item.id === id) || alloRegionDetails[0];
+  const target = $("#sourceMapSelectedDetail");
+  if (target) target.innerHTML = alloMapDetailMarkup(region);
+  $$('[data-allo-region]').forEach((button) => button.classList.toggle("active", button.dataset.alloRegion === region.id));
+};
+
+const selectGlobalCountry = (id) => {
+  const country = globalCountryDetails.find((item) => item.id === id) || globalCountryDetails[0];
+  const target = $("#sourceMapSelectedDetail");
+  if (target) target.innerHTML = globalMapDetailMarkup(country);
+  $$('[data-global-country]').forEach((button) => button.classList.toggle("active", button.dataset.globalCountry === country.id));
+};
+
 const carouselModes = ["calendar", "allo", "global"];
 const carouselMeta = {
   calendar: ["메드파크 주요 일정", "회사 주요 일정과 오늘의 일정을 함께 확인합니다."],
@@ -349,22 +409,44 @@ const renderCarousel = () => {
   if (carouselMode === "calendar") renderCalendarView();
   else if (carouselMode === "allo") body.innerHTML = `
     <section class="source-map-panel allo-source-panel">
-      <div class="source-map-stage">
-        <figure class="source-map-crop allo-source-crop">
-          <img src="./assets/medpark-allo-coverage.png" alt="MedPark-Allo 원본 전국 지역별 커버리지 지도" />
-        </figure>
+      <div class="source-map-body">
+        <div class="source-map-stage">
+          <figure class="source-map-crop allo-source-crop">
+            <img src="./assets/medpark-allo-coverage.png" alt="MedPark-Allo 원본 전국 지역별 커버리지 지도" draggable="false" />
+            ${alloRegionDetails.filter((region) => region.x).map((region) => `<button class="map-hotspot allo-hotspot" style="--x:${region.x}%;--y:${region.y}%" data-allo-region="${region.id}" aria-label="${region.name} 커버리지 상세 보기" data-label="${region.name}"></button>`).join("")}
+          </figure>
+        </div>
+        <aside class="source-map-detail-panel">
+          <div id="sourceMapSelectedDetail"></div>
+          <div class="map-detail-selector allo-selector">${alloRegionDetails.map((region) => `<button data-allo-region="${region.id}"><span>${region.name}</span><b>${region.secured} / ${region.total}</b><small>${region.coverage}%</small></button>`).join("")}</div>
+        </aside>
       </div>
       <footer class="source-map-footer"><span><i></i>관리자 로그인 후 확인한 원본 지도 화면</span><a href="https://medprk-medpark-allo.mycafe24.ai/" target="_blank" rel="noopener noreferrer">MedPark-Allo 열기 ↗</a></footer>
     </section>`;
   else body.innerHTML = `
     <section class="source-map-panel global-source-panel">
-      <div class="source-map-stage">
-        <figure class="source-map-crop global-source-crop">
-          <img src="./assets/global-market-action-map.png" alt="Global-MAPS 원본 국가별 거래처 FCST ERP 확정매출 지도" />
-        </figure>
+      <div class="source-map-body">
+        <div class="source-map-stage">
+          <figure class="source-map-crop global-source-crop">
+            <img src="./assets/global-market-action-map.png" alt="Global-MAPS 원본 국가별 거래처 FCST ERP 확정매출 지도" draggable="false" />
+            ${globalCountryDetails.map((country) => `<button class="map-hotspot global-hotspot" style="--x:${country.x}%;--y:${country.y}%" data-global-country="${country.id}" aria-label="${country.name} 거래처와 매출 상세 보기" data-label="${country.name}">${country.partners}</button>`).join("")}
+          </figure>
+        </div>
+        <aside class="source-map-detail-panel global-detail-panel">
+          <div id="sourceMapSelectedDetail"></div>
+          <div class="map-detail-selector global-selector">${globalCountryDetails.map((country) => `<button data-global-country="${country.id}"><span>${country.name}</span><b>${country.partners}개 거래처</b></button>`).join("")}</div>
+        </aside>
       </div>
       <footer class="source-map-footer"><span><i></i>관리자 로그인 후 확인한 원본 지도 화면</span><a href="https://medprk-medpark-global-maps.mycafe24.ai/" target="_blank" rel="noopener noreferrer">Global-MAPS 열기 ↗</a></footer>
     </section>`;
+  if (carouselMode === "allo") {
+    $$('[data-allo-region]').forEach((button) => button.addEventListener("click", () => selectAlloRegion(button.dataset.alloRegion)));
+    selectAlloRegion("all");
+  }
+  if (carouselMode === "global") {
+    $$('[data-global-country]').forEach((button) => button.addEventListener("click", () => selectGlobalCountry(button.dataset.globalCountry)));
+    selectGlobalCountry("sa");
+  }
   $("#carouselProgress").innerHTML = "<i></i>";
   $$('[data-carousel]').forEach((button) => button.onclick = () => { carouselMode = button.dataset.carousel; renderCarousel(); startCarousel(); });
 };
