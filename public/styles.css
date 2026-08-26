@@ -367,7 +367,7 @@ a { color: inherit; text-decoration: none; }
 .source-map-panel { min-height: 460px; display: grid; grid-template-rows: minmax(0,1fr) auto; overflow: hidden; background: #eef3f8; }
 .source-map-body { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0,1fr) clamp(190px, 23%, 290px); overflow: hidden; }
 .source-map-stage { min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; container-type: size; background: #edf3fb; }
-.global-source-panel .source-map-stage { background: #073f4b; }
+.global-source-panel, .global-source-panel .source-map-stage { background: #fff; }
 .source-map-crop { position: relative; max-width: 100%; max-height: 100%; margin: 0; overflow: hidden; background: white; box-shadow: 0 10px 30px rgba(11,52,84,.12); }
 .allo-source-crop { width: min(100cqw, calc(100cqh * 1.6355)); height: min(100cqh, calc(100cqw / 1.6355)); }
 .global-source-crop { width: min(100cqw, calc(100cqh * 1.99)); height: min(100cqh, calc(100cqw / 1.99)); }
