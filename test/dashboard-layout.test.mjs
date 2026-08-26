@@ -67,6 +67,20 @@ test("30초 순환 패널은 인증 확인된 Allo·Global 지도 구조와 원�
   assert.doesNotMatch(app, /source-password|source-username|관리자 비밀번호/);
 });
 
+test("마우스가 순환 패널 위에 머무는 동안 30초 자동 전환과 진행 표시가 정지한다", async () => {
+  const [css, app] = await Promise.all([
+    readFile(new URL("public/styles.css", root), "utf8"),
+    readFile(new URL("public/app.js", root), "utf8")
+  ]);
+  assert.match(app, /let carouselPaused = false/);
+  assert.match(app, /if \(carouselPaused \|\| currentPage !== "dashboard"\) return/);
+  assert.match(app, /panel\.addEventListener\("mouseenter", \(\) => setCarouselPaused\(true\)\)/);
+  assert.match(app, /panel\.addEventListener\("mouseleave", \(\) => setCarouselPaused\(false\)\)/);
+  assert.match(app, /if \(paused\) \{\s*clearInterval\(carouselTimer\);\s*carouselTimer = null/);
+  assert.match(app, /else startCarousel\(\)/);
+  assert.match(css, /\.main-carousel-panel\.carousel-paused \.carousel-progress i \{ animation-play-state: paused; \}/);
+});
+
 test("Allo·Global 시각화는 확인된 원본 지도 이미지의 지도 영역을 반응형으로 크롭한다", async () => {
   const [css, app, alloImage, globalImage] = await Promise.all([
     readFile(new URL("public/styles.css", root), "utf8"),
