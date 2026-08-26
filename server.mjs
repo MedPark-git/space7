@@ -15,7 +15,7 @@ const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=u
 const staticCacheControl = (extension) => extension === ".html" ? "no-store, max-age=0" : "no-cache, max-age=0, must-revalidate";
 const dbConfig = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"].every((key) => process.env[key]);
 let pool = null;
-const memory = { users: new Map(), sessions: new Map(), audits: [], menuLabels: new Map(), customMenuItems: new Map(), quickLinks: new Map(), calendarSettings: null };
+const memory = { users: new Map(), sessions: new Map(), audits: [], menuLabels: new Map(), customMenuItems: new Map(), quickLinks: new Map(), calendarSettings: null, calendarSelections: new Map() };
 const calendarRedirectUri = process.env.GOOGLE_CALENDAR_REDIRECT_URI || "https://medprk-medpark-one.mycafe24.ai/api/calendar/oauth/callback";
 const calendarScope = "https://www.googleapis.com/auth/calendar.readonly";
 const editableMenuIds = new Set([
@@ -125,6 +125,13 @@ const initDatabase = async () => {
       oauth_client_secret_encrypted text, access_token_encrypted text, refresh_token_encrypted text,
       token_expiry timestamptz, oauth_state_hash char(64), oauth_state_expiry timestamptz,
       updated_by uuid REFERENCES users(id) ON DELETE SET NULL, updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS calendar_integration_calendars (
+      calendar_id varchar(255) PRIMARY KEY, summary varchar(255) NOT NULL,
+      background_color varchar(20), primary_calendar boolean NOT NULL DEFAULT false,
+      access_role varchar(30), item_order integer NOT NULL DEFAULT 0,
+      updated_by uuid REFERENCES users(id) ON DELETE SET NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
     );
   `);
   const count = Number((await pool.query("SELECT count(*)::int AS count FROM users WHERE status::text = 'active' AND role::text = 'admin'")).rows[0].count);
@@ -266,12 +273,22 @@ const getCalendarSettingsRow = async () => {
   return memory.calendarSettings;
 };
 
-const publicCalendarSettings = (row) => ({
+const getSelectedCalendars = async (row = null) => {
+  const selected = pool
+    ? (await pool.query("SELECT calendar_id,summary,background_color,primary_calendar,access_role,item_order FROM calendar_integration_calendars ORDER BY item_order,summary")).rows
+    : [...memory.calendarSelections.values()].sort((a, b) => a.item_order - b.item_order);
+  if (selected.length) return selected;
+  const fallback = row || await getCalendarSettingsRow();
+  return fallback?.calendar_id ? [{ calendar_id: fallback.calendar_id, summary: fallback.calendar_id, background_color: null, primary_calendar: true, access_role: null, item_order: 0 }] : [];
+};
+
+const publicCalendarSettings = async (row) => ({
   configured: Boolean(row), mode: row?.mode || "api_key", calendar_id: row?.calendar_id || "medpark.remote@gmail.com",
   api_key_saved: Boolean(row?.api_key_encrypted), oauth_client_id: row?.oauth_client_id || "",
   oauth_client_secret_saved: Boolean(row?.oauth_client_secret_encrypted),
   connected: row?.mode === "api_key" ? Boolean(row?.api_key_encrypted) : Boolean(row?.refresh_token_encrypted || row?.access_token_encrypted),
-  redirect_uri: calendarRedirectUri, scope: calendarScope, updated_at: row?.updated_at || null
+  redirect_uri: calendarRedirectUri, scope: calendarScope, updated_at: row?.updated_at || null,
+  selected_calendars: row?.mode === "oauth" ? await getSelectedCalendars(row) : []
 });
 
 const saveCalendarSettings = async (input, actor, ip) => {
@@ -306,7 +323,7 @@ const saveCalendarSettings = async (input, actor, ip) => {
   } else memory.calendarSettings = row;
   calendarCache.clear();
   await writeAudit(actor.id, "calendar.settings.update", "calendar_integration", "google", { mode, calendar_id: calendarId }, ip);
-  return publicCalendarSettings(await getCalendarSettingsRow());
+  return await publicCalendarSettings(await getCalendarSettingsRow());
 };
 
 const googleError = async (response, fallback) => {
@@ -366,6 +383,88 @@ const calendarAccessToken = async (row) => {
   return token.access_token;
 };
 
+const fetchGoogleCalendarList = async (row) => {
+  if (!row || row.mode !== "oauth") throw Object.assign(new Error("OAuth 2.0 연결 방식을 먼저 선택해 주세요."), { status: 400 });
+  const accessToken = await calendarAccessToken(row);
+  const calendars = [];
+  let pageToken = "";
+  do {
+    const params = new URLSearchParams({ maxResults: "250", minAccessRole: "reader", showHidden: "true" });
+    if (pageToken) params.set("pageToken", pageToken);
+    const response = await fetch(`https://www.googleapis.com/calendar/v3/users/me/calendarList?${params}`, { headers: { accept: "application/json", authorization: `Bearer ${accessToken}` } });
+    if (!response.ok) throw await googleError(response, "Google 캘린더 목록을 불러오지 못했습니다.");
+    const data = await response.json();
+    calendars.push(...(data.items || []).filter((item) => item.id).map((item) => ({
+      calendar_id: String(item.id), summary: String(item.summaryOverride || item.summary || item.id),
+      background_color: item.backgroundColor || null, primary_calendar: Boolean(item.primary),
+      access_role: item.accessRole || "reader"
+    })));
+    pageToken = data.nextPageToken || "";
+  } while (pageToken);
+  return calendars;
+};
+
+const listAvailableCalendars = async () => {
+  const row = await getCalendarSettingsRow();
+  const available = await fetchGoogleCalendarList(row);
+  const selectedIds = new Set((await getSelectedCalendars(row)).map((item) => item.calendar_id));
+  return { calendars: available.map((item) => ({ ...item, selected: selectedIds.has(item.calendar_id) })) };
+};
+
+const saveSelectedCalendars = async (input, actor, ip) => {
+  const ids = Array.isArray(input.calendar_ids) ? [...new Set(input.calendar_ids.map((id) => String(id).trim()).filter(Boolean))] : [];
+  if (!ids.length || ids.length > 50 || ids.some((id) => id.length > 255)) throw Object.assign(new Error("캘린더는 1~50개를 선택해 주세요."), { status: 400 });
+  const row = await getCalendarSettingsRow();
+  const available = await fetchGoogleCalendarList(row);
+  const availableById = new Map(available.map((item) => [item.calendar_id, item]));
+  if (ids.some((id) => !availableById.has(id))) throw Object.assign(new Error("현재 Google 계정에서 조회할 수 없는 캘린더가 포함되어 있습니다."), { status: 400 });
+  const selected = ids.map((id, item_order) => ({ ...availableById.get(id), item_order }));
+  if (pool) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM calendar_integration_calendars");
+      for (const item of selected) await client.query(
+        "INSERT INTO calendar_integration_calendars (calendar_id,summary,background_color,primary_calendar,access_role,item_order,updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        [item.calendar_id,item.summary,item.background_color,item.primary_calendar,item.access_role,item.item_order,actor.id]
+      );
+      await client.query("UPDATE calendar_integration_settings SET calendar_id=$1,updated_by=$2,updated_at=now() WHERE id=1", [selected[0].calendar_id,actor.id]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { client.release(); }
+  } else {
+    memory.calendarSelections.clear();
+    selected.forEach((item) => memory.calendarSelections.set(item.calendar_id, item));
+    if (memory.calendarSettings) Object.assign(memory.calendarSettings, { calendar_id: selected[0].calendar_id, updated_at: new Date().toISOString() });
+  }
+  calendarCache.clear();
+  await writeAudit(actor.id, "calendar.selection.update", "calendar_integration", "google", { calendar_ids: ids }, ip);
+  return { success: true, selected_calendars: selected };
+};
+
+const fetchEventsForCalendar = async (calendar, params, headers) => {
+  const events = [];
+  let pageToken = "";
+  do {
+    const pageParams = new URLSearchParams(params);
+    if (pageToken) pageParams.set("pageToken", pageToken);
+    const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendar.calendar_id)}/events?${pageParams}`, { headers });
+    if (!response.ok) throw await googleError(response, `${calendar.summary} 일정을 불러오지 못했습니다.`);
+    const data = await response.json();
+    events.push(...(data.items || []).filter((event) => event.status !== "cancelled").map((event) => ({
+      id: `${calendar.calendar_id}:${event.id}`, source_event_id: event.id,
+      calendar_id: calendar.calendar_id, calendar_name: calendar.summary,
+      calendar_color: calendar.background_color || "", title: event.summary || "제목 없는 일정",
+      start: event.start?.dateTime || event.start?.date, end: event.end?.dateTime || event.end?.date,
+      all_day: Boolean(event.start?.date), location: event.location || "", html_link: event.htmlLink || ""
+    })));
+    pageToken = data.nextPageToken || "";
+  } while (pageToken);
+  return events;
+};
+
 const fetchCalendarEvents = async (month) => {
   const row = await getCalendarSettingsRow();
   if (!row) return { connected: false, events: [], message: "관리자가 Google Calendar 연결을 설정해 주세요." };
@@ -374,17 +473,20 @@ const fetchCalendarEvents = async (month) => {
   const year = match ? Number(match[1]) : now.getFullYear();
   const monthIndex = match ? Number(match[2]) - 1 : now.getMonth();
   if (monthIndex < 0 || monthIndex > 11 || year < 2000 || year > 2100) throw Object.assign(new Error("조회 월 형식을 확인해 주세요."), { status: 400 });
-  const cacheKey = `${row.mode}:${row.calendar_id}:${year}-${monthIndex + 1}`;
+  const calendars = row.mode === "oauth" ? await getSelectedCalendars(row) : [{ calendar_id: row.calendar_id, summary: row.calendar_id, background_color: null }];
+  if (!calendars.length) throw Object.assign(new Error("관리자 화면에서 표시할 캘린더를 선택해 주세요."), { status: 400 });
+  const cacheKey = `${row.mode}:${calendars.map((item) => item.calendar_id).join("|")}:${year}-${monthIndex + 1}`;
   const cached = calendarCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) return cached.value;
   const params = new URLSearchParams({ timeMin: new Date(Date.UTC(year,monthIndex,1)).toISOString(), timeMax: new Date(Date.UTC(year,monthIndex + 1,1)).toISOString(), singleEvents: "true", orderBy: "startTime", maxResults: "250", timeZone: "Asia/Seoul" });
   const headers = { accept: "application/json" };
   if (row.mode === "api_key") params.set("key", decryptSecret(row.api_key_encrypted) || "");
   else headers.authorization = `Bearer ${await calendarAccessToken(row)}`;
-  const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(row.calendar_id)}/events?${params}`, { headers });
-  if (!response.ok) throw await googleError(response, row.mode === "api_key" ? "API 키 또는 공개 캘린더 설정을 확인해 주세요." : "Google Calendar 일정을 불러오지 못했습니다.");
-  const data = await response.json();
-  const value = { connected: true, mode: row.mode, calendar_id: row.calendar_id, events: (data.items || []).filter((event) => event.status !== "cancelled").map((event) => ({ id: event.id, title: event.summary || "제목 없는 일정", start: event.start?.dateTime || event.start?.date, end: event.end?.dateTime || event.end?.date, all_day: Boolean(event.start?.date), location: event.location || "", html_link: event.htmlLink || "" })) };
+  const results = await Promise.allSettled(calendars.map((calendar) => fetchEventsForCalendar(calendar, params, headers)));
+  const events = results.flatMap((result) => result.status === "fulfilled" ? result.value : []).sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")));
+  const warnings = results.flatMap((result, index) => result.status === "rejected" ? [{ calendar_id: calendars[index].calendar_id, calendar_name: calendars[index].summary, message: result.reason?.message || "일정 조회 실패" }] : []);
+  if (warnings.length === calendars.length) throw Object.assign(new Error(warnings[0].message), { status: 400 });
+  const value = { connected: true, mode: row.mode, calendar_id: row.calendar_id, calendar_count: calendars.length, calendars, events, warnings };
   calendarCache.set(cacheKey, { expires: Date.now() + 5 * 60 * 1000, value });
   return value;
 };
@@ -526,9 +628,11 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/api/auth/me" && req.method === "GET") return sendJson(res, 200, { user: publicUser(await requireUser(req)) });
     if (url.pathname === "/api/calendar/events" && req.method === "GET") { await requireUser(req); return sendJson(res, 200, await fetchCalendarEvents(url.searchParams.get("month"))); }
-    if (url.pathname === "/api/admin/calendar/settings" && req.method === "GET") { await requireUser(req, true); return sendJson(res, 200, publicCalendarSettings(await getCalendarSettingsRow())); }
+    if (url.pathname === "/api/admin/calendar/settings" && req.method === "GET") { await requireUser(req, true); return sendJson(res, 200, await publicCalendarSettings(await getCalendarSettingsRow())); }
     if (url.pathname === "/api/admin/calendar/settings" && req.method === "PUT") { const actor = await requireUser(req, true); return sendJson(res, 200, await saveCalendarSettings(await readBody(req), actor, requestIp(req))); }
-    if (url.pathname === "/api/admin/calendar/test" && req.method === "POST") { await requireUser(req, true); const result = await fetchCalendarEvents(url.searchParams.get("month")); return sendJson(res, 200, { success: result.connected, event_count: result.events.length, message: result.connected ? `${result.events.length}개의 일정을 확인했습니다.` : result.message }); }
+    if (url.pathname === "/api/admin/calendar/calendars" && req.method === "GET") { await requireUser(req, true); return sendJson(res, 200, await listAvailableCalendars()); }
+    if (url.pathname === "/api/admin/calendar/calendars" && req.method === "PUT") { const actor = await requireUser(req, true); return sendJson(res, 200, await saveSelectedCalendars(await readBody(req), actor, requestIp(req))); }
+    if (url.pathname === "/api/admin/calendar/test" && req.method === "POST") { await requireUser(req, true); const result = await fetchCalendarEvents(url.searchParams.get("month")); return sendJson(res, 200, { success: result.connected, event_count: result.events.length, calendar_count: result.calendar_count || 1, warning_count: result.warnings?.length || 0, message: result.connected ? `${result.calendar_count || 1}개 캘린더에서 ${result.events.length}개의 일정을 확인했습니다.${result.warnings?.length ? ` (${result.warnings.length}개 캘린더 조회 실패)` : ""}` : result.message }); }
     if (url.pathname === "/api/admin/calendar/oauth/start" && req.method === "POST") { const actor = await requireUser(req, true); return sendJson(res, 200, await startCalendarOAuth(actor, requestIp(req))); }
     if (url.pathname === "/api/calendar/oauth/callback" && req.method === "GET") {
       if (url.searchParams.get("error")) { res.writeHead(302, { location: "/?calendar=denied" }); return res.end(); }

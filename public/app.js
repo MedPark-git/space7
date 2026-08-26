@@ -268,11 +268,11 @@ const renderCalendarView = async () => {
     const scheduleHtml = focusEvents.length ? focusEvents.slice(0,5).map((event) => {
       const start = event.all_day ? "종일" : new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.start));
       const end = event.all_day || !event.end ? "" : new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.end));
-      return `<div class="schedule-item"><time>${escapeHtml(start)}${end ? ` - ${escapeHtml(end)}` : ""}</time><b>${escapeHtml(event.title)}</b><span>${escapeHtml(event.location || "Google Calendar")}</span></div>`;
+      return `<div class="schedule-item"><time>${escapeHtml(start)}${end ? ` - ${escapeHtml(end)}` : ""}</time><b>${escapeHtml(event.title)}</b><span>${event.calendar_color ? `<i class="calendar-color-dot" style="--calendar-color:${escapeHtml(event.calendar_color)}"></i>` : ""}${escapeHtml(event.calendar_name || event.location || "Google Calendar")}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</span></div>`;
     }).join("") : '<p class="calendar-empty">등록된 일정이 없습니다.</p>';
     body.innerHTML = `<div class="calendar-view main-calendar-view">
       <div class="calendar-area"><div class="calendar-top"><button id="calendarPrev" aria-label="이전 달">‹</button><b>${year}년 ${month}월</b><button id="calendarNext" aria-label="다음 달">›</button></div><div class="calendar-grid">${renderCalendarDays(events)}</div></div>
-      <aside class="schedule-list"><h3>${focusLabel}</h3>${scheduleHtml}<span class="integration-badge ${result.connected ? "connected" : "waiting"}">${result.connected ? `Google Calendar 연결됨 · ${events.length}건` : escapeHtml(result.message || "연결 설정 필요")}</span></aside>
+      <aside class="schedule-list"><h3>${focusLabel}</h3>${scheduleHtml}<span class="integration-badge ${result.connected ? "connected" : "waiting"}">${result.connected ? `Google Calendar ${result.calendar_count || 1}개 연결 · ${events.length}건` : escapeHtml(result.message || "연결 설정 필요")}</span></aside>
     </div>`;
     const todayCount = $("#todayScheduleCount");
     if (todayCount && today.getFullYear() === year && today.getMonth() === month - 1) todayCount.textContent = focusEvents.length;
@@ -610,6 +610,13 @@ const renderPlaceholder = (title, icon) => {
   $("#configButton").addEventListener("click", () => showToast("보안을 위해 인증정보는 배포 환경변수로 등록합니다."));
 };
 
+const calendarPickerMarkup = (calendars = []) => calendars.length ? calendars.map((calendar) => `
+  <label class="calendar-choice">
+    <input type="checkbox" name="calendar_selection" value="${escapeHtml(calendar.calendar_id)}" ${calendar.selected !== false ? "checked" : ""} />
+    <i style="--calendar-color:${escapeHtml(calendar.background_color || "#0a9b7e")}"></i>
+    <span><b>${escapeHtml(calendar.summary || calendar.calendar_id)}</b><small>${calendar.primary_calendar ? "기본 캘린더 · " : ""}${escapeHtml(calendar.access_role || "reader")} · ${escapeHtml(calendar.calendar_id)}</small></span>
+  </label>`).join("") : '<p class="calendar-picker-empty">Google 계정 승인 후 ‘캘린더 목록 불러오기’를 눌러 주세요.</p>';
+
 const calendarSettingsMarkup = (settings) => `
   <section class="calendar-settings-layout">
     <article class="calendar-connection-card">
@@ -628,6 +635,12 @@ const calendarSettingsMarkup = (settings) => `
         <label>OAuth 2.0 Client Secret<input name="oauth_client_secret" type="password" autocomplete="new-password" placeholder="${settings.oauth_client_secret_saved ? "저장된 Client Secret 유지" : "GOCSPX-..."}" /></label>
         <label>승인된 리디렉션 URI<input value="${escapeHtml(settings.redirect_uri)}" readonly /><small>Google Cloud OAuth 클라이언트에 이 주소를 정확히 등록해야 합니다.</small></label>
         <label>요청 권한<input value="읽기 전용 · calendar.readonly" readonly /></label>
+        <section class="calendar-picker-section">
+          <div class="calendar-picker-heading"><div><b>표시할 캘린더</b><small>연결 계정에서 읽을 수 있는 캘린더를 여러 개 선택할 수 있습니다.</small></div><button type="button" id="loadCalendarList" class="button secondary">캘린더 목록 불러오기</button></div>
+          <div class="calendar-picker-actions"><button type="button" id="selectAllCalendars">전체 선택</button><button type="button" id="clearCalendarSelection">선택 해제</button><span id="calendarSelectionCount">${(settings.selected_calendars || []).length}개 선택</span></div>
+          <div id="calendarPickerList" class="calendar-picker-list">${calendarPickerMarkup(settings.selected_calendars || [])}</div>
+          <button type="button" id="saveCalendarSelection" class="button primary full" ${(settings.selected_calendars || []).length ? "" : "disabled"}>선택한 캘린더 저장</button>
+        </section>
       </div>
       <p id="calendarSettingsError" class="form-error"></p>
       <footer><button type="button" id="testCalendar" class="button secondary">연결 테스트</button><button type="submit" class="button primary">설정 저장</button><button type="button" id="authorizeCalendar" class="button primary">Google 계정 승인</button></footer>
@@ -642,6 +655,53 @@ const updateCalendarModeFields = () => {
   $("#authorizeCalendar").hidden = mode !== "oauth";
 };
 
+const updateCalendarSelectionCount = () => {
+  const choices = $$('[name="calendar_selection"]');
+  const selected = choices.filter((input) => input.checked).length;
+  const count = $("#calendarSelectionCount");
+  if (count) count.textContent = `${selected}개 선택`;
+  const save = $("#saveCalendarSelection");
+  if (save) save.disabled = selected === 0;
+};
+
+const bindCalendarPicker = () => {
+  $("#calendarPickerList")?.addEventListener("change", updateCalendarSelectionCount);
+  $("#selectAllCalendars")?.addEventListener("click", () => { $$('[name="calendar_selection"]').forEach((input) => { input.checked = true; }); updateCalendarSelectionCount(); });
+  $("#clearCalendarSelection")?.addEventListener("click", () => { $$('[name="calendar_selection"]').forEach((input) => { input.checked = false; }); updateCalendarSelectionCount(); });
+  $("#loadCalendarList")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    $("#calendarSettingsError").textContent = "";
+    $("#calendarPickerList").innerHTML = '<div class="calendar-loading compact"><span class="spinner"></span><p>사용 가능한 캘린더를 불러오는 중입니다.</p></div>';
+    try {
+      const response = await fetch("/api/admin/calendar/calendars", { headers: { accept: "application/json" } });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      $("#calendarPickerList").innerHTML = calendarPickerMarkup(result.calendars || []);
+      updateCalendarSelectionCount();
+    } catch (error) {
+      $("#calendarPickerList").innerHTML = '<p class="calendar-picker-empty">캘린더 목록을 불러오지 못했습니다.</p>';
+      $("#calendarSettingsError").textContent = error.message || "캘린더 목록을 불러오지 못했습니다.";
+    } finally { button.disabled = false; }
+  });
+  $("#saveCalendarSelection")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const calendarIds = $$('[name="calendar_selection"]:checked').map((input) => input.value);
+    button.disabled = true;
+    $("#calendarSettingsError").textContent = "";
+    try {
+      const response = await fetch("/api/admin/calendar/calendars", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ calendar_ids: calendarIds }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      showToast(`${result.selected_calendars.length}개 캘린더가 저장되었습니다.`);
+      await loadCalendarSettingsPage();
+    } catch (error) {
+      $("#calendarSettingsError").textContent = error.message || "캘린더 선택 저장에 실패했습니다.";
+      button.disabled = false;
+    }
+  });
+};
+
 const loadCalendarSettingsPage = async () => {
   const host = $("#calendarSettingsHost");
   if (!host) return;
@@ -651,6 +711,7 @@ const loadCalendarSettingsPage = async () => {
     if (!response.ok) throw new Error(settings.message);
     host.innerHTML = calendarSettingsMarkup(settings);
     updateCalendarModeFields();
+    bindCalendarPicker();
     $("#calendarMode").addEventListener("change", updateCalendarModeFields);
     $("#calendarSettingsForm").addEventListener("submit", async (event) => {
       event.preventDefault();
