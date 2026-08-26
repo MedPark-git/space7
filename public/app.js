@@ -3,9 +3,21 @@ const menuGroups = [
     { id: "dashboard", icon: "▦", title: "통합 대시보드" }
   ]},
   { label: "BUSINESS", items: [
-    { id: "management", icon: "▰", title: "경영사업본부", children: ["미수채권 관리시스템", "HR", "경영 루틴 업무"] },
-    { id: "marketing", icon: "◫", title: "마케팅사업본부", children: ["국내영업 · MedPark-Allo", "국내영업 · 덴탈", "국내영업 · 메디컬", "국내영업 · 에스테틱", "해외영업 · Global-MAPS"] },
-    { id: "technology", icon: "◇", title: "기술사업본부", children: ["기술부 중점 업무"] }
+    { id: "management", icon: "▰", title: "경영사업본부", children: [
+      { title: "미수채권 관리시스템", url: "https://medprk-ar-dashboard.mycafe24.ai/" },
+      { title: "HR", url: "https://medprk-medpark-hr-maps.mycafe24.ai/" },
+      { title: "경영 루틴 업무 시스템", url: null }
+    ]},
+    { id: "marketing", icon: "◫", title: "마케팅사업본부", children: [
+      { title: "국내영업 · MedPark-Allo", url: "https://medprk-medpark-allo.mycafe24.ai/" },
+      { title: "국내영업 · 덴탈", url: null },
+      { title: "국내영업 · 메디컬", url: null },
+      { title: "국내영업 · 에스테틱", url: null },
+      { title: "해외영업 · Global-MAPS", url: "https://medprk-medpark-global-maps.mycafe24.ai/" }
+    ]},
+    { id: "technology", icon: "◇", title: "기술사업본부", children: [
+      { title: "기술부 중점 업무", url: "https://medprk-medpark-tech-conference-maps.mycafe24.ai/" }
+    ]}
   ]},
   { label: "COLLABORATION", items: [
     { id: "amarans", icon: "A", title: "아마란스" },
@@ -114,7 +126,7 @@ const renderNavigation = () => {
         <button class="nav-item ${item.id === currentPage ? "active" : ""}" data-nav="${item.id}" data-has-children="${Boolean(item.children)}">
           <span class="nav-icon">${item.icon}</span><span>${item.title}</span>${item.children ? '<span class="chevron">›</span>' : ""}
         </button>
-        ${item.children ? `<div class="submenu" data-submenu="${item.id}"><div>${item.children.map((child) => `<button data-external="${child}">${child}<span style="float:right">↗</span></button>`).join("")}</div></div>` : ""}
+        ${item.children ? `<div class="submenu" data-submenu="${item.id}"><div>${item.children.map((child) => `<button data-external="${escapeHtml(child.title)}"${child.url ? ` data-url="${escapeHtml(child.url)}"` : ""}>${escapeHtml(child.title)}<span style="float:right">${child.url ? "↗" : "·"}</span></button>`).join("")}</div></div>` : ""}
       `).join("")}
     </section>
   `).join("");
@@ -128,7 +140,10 @@ const renderNavigation = () => {
     }
     navigate(id);
   }));
-  $$('[data-external]').forEach((button) => button.addEventListener("click", () => showToast(`${button.dataset.external} 링크는 관리자 화면에서 등록합니다.`)));
+  $$('[data-external]').forEach((button) => button.addEventListener("click", () => {
+    if (button.dataset.url) window.open(button.dataset.url, "_blank", "noopener,noreferrer");
+    else showToast(`${button.dataset.external} 링크는 추후 연결할 예정입니다.`);
+  }));
 };
 
 const navigate = (page) => {
