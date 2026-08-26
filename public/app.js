@@ -198,6 +198,7 @@ const renderNavigation = () => {
 const navigate = (page) => {
   currentPage = page;
   clearInterval(carouselTimer);
+  pageContent.classList.toggle("dashboard-page", page === "dashboard");
   renderNavigation();
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.nav === page));
   const title = menuGroups.flatMap((g) => g.items).find((item) => item.id === page)?.title || "통합 대시보드";
