@@ -219,7 +219,8 @@ a { color: inherit; text-decoration: none; }
 .calendar-grid .day-head { min-height: 32px; background: #f8faf9; color: #8a9693; text-align: center; }
 .calendar-grid .muted-day { color: #bbc4c1; background: #fbfcfc; }
 .calendar-grid .today-day { background: #f1faf7; color: var(--green-800); font-weight: 800; }
-.event-dot { position: absolute; left: 7px; right: 7px; bottom: 7px; overflow: hidden; padding: 4px 5px; border-radius: 4px; background: #d7f2e8; color: #08715e; white-space: nowrap; text-overflow: ellipsis; font-size: 7px; }
+.event-dot { display: block; overflow: hidden; margin-top: 3px; padding: 3px 5px; border-radius: 4px; background: #d7f2e8; color: #08715e; white-space: nowrap; text-overflow: ellipsis; font-size: 7px; }
+.more-events { display: block; margin-top: 2px; color: var(--green-700); font-size: 7px; font-weight: 800; }
 .schedule-list { padding: 18px; background: #f8faf9; border-left: 1px solid #e6ecea; }
 .schedule-list h3 { margin: 1px 0 15px; font-size: 12px; }
 .schedule-item { position: relative; margin-bottom: 10px; padding: 12px 10px 12px 17px; border-radius: 8px; background: white; border: 1px solid #e7edeb; }
@@ -256,6 +257,14 @@ a { color: inherit; text-decoration: none; }
 @keyframes progress { to { width: 100%; } }
 
 .integration-badge { display: inline-flex; margin-top: 4px; padding: 6px 8px; border-radius: 6px; background: #eaf5f1; color: var(--green-800); font-size: 8px; font-weight: 750; }
+.integration-badge.waiting { background: #fff4da; color: #93691e; }
+.calendar-empty { margin: 30px 0; color: #8a9693; font-size: 10px; text-align: center; }
+.calendar-loading, .calendar-error-state { min-height: 460px; display: grid; place-content: center; justify-items: center; gap: 10px; color: #82908c; text-align: center; }
+.calendar-loading .spinner { display: block; border-color: #dbe9e4; border-top-color: var(--green-700); }
+.calendar-loading p, .calendar-error-state p { margin: 0; font-size: 10px; }
+.calendar-error-state i { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 13px; background: #fff1e8; color: #bc6139; font-style: normal; font-weight: 850; }
+.calendar-error-state h3 { margin: 4px 0 0; font-size: 14px; }
+.calendar-error-state .button { margin-top: 8px; }
 .allo-dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(270px, .8fr); min-height: 460px; }
 .coverage-map-stage { position: relative; min-height: 460px; display: grid; place-items: center; overflow: hidden; background: radial-gradient(circle at 50% 42%, #f8fcfa 0, #eaf4f0 66%, #e3efeb 100%); }
 .coverage-map-stage::before { content: ""; position: absolute; inset: 0; opacity: .42; background-image: linear-gradient(#d4e5df 1px, transparent 1px), linear-gradient(90deg,#d4e5df 1px,transparent 1px); background-size: 38px 38px; }
@@ -300,6 +309,27 @@ a { color: inherit; text-decoration: none; }
 .country-row div b { font-size: 10px; }
 .country-row div span { margin-top: 3px; color: #8d9895; font-size: 8px; }
 .country-row strong { color: #87938f; font-size: 8px; }
+
+.calendar-settings-panel { min-height: 610px; }
+.calendar-settings-layout { display: grid; grid-template-columns: 250px minmax(0,1fr); gap: 20px; align-items: start; }
+.calendar-connection-card { position: sticky; top: 94px; display: grid; grid-template-columns: 13px 1fr; gap: 12px; padding: 20px; border: 1px solid #dfe9e5; border-radius: 12px; background: #f8fbfa; }
+.connection-light { width: 11px; height: 11px; margin-top: 2px; border-radius: 50%; background: #b8c4c0; box-shadow: 0 0 0 5px #edf1f0; }
+.connection-light.on { background: #18a97d; box-shadow: 0 0 0 5px #dcf3eb; }
+.calendar-connection-card div span, .calendar-connection-card div b, .calendar-connection-card div small { display: block; }
+.calendar-connection-card div span { color: #8b9693; font-size: 9px; }
+.calendar-connection-card div b { margin: 6px 0; font-size: 12px; }
+.calendar-connection-card div small { overflow-wrap: anywhere; color: var(--green-800); font-size: 8px; }
+.calendar-settings-form { display: grid; gap: 15px; padding: 22px; border: 1px solid #e2ebe8; border-radius: 12px; background: white; }
+.settings-section-heading { padding-bottom: 12px; border-bottom: 1px solid #edf1f0; }
+.settings-section-heading h2 { margin: 6px 0; font-size: 18px; }
+.settings-section-heading p { margin: 0; color: var(--muted); font-size: 10px; }
+.calendar-settings-form label { display: grid; gap: 7px; color: #44534f; font-size: 10px; font-weight: 750; }
+.calendar-settings-form input, .calendar-settings-form select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfc; color: #33423e; outline: none; }
+.calendar-settings-form input:focus, .calendar-settings-form select:focus { border-color: var(--green-600); box-shadow: 0 0 0 3px rgba(10,155,126,.1); }
+.calendar-settings-form input[readonly] { background: #f0f4f2; color: #687672; }
+.calendar-settings-form label small { color: #8b9793; font-size: 8px; font-weight: 500; }
+.calendar-mode-fields { display: grid; gap: 14px; padding: 15px; border-radius: 10px; background: #f5f9f7; }
+.calendar-settings-form footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding-top: 5px; }
 
 .content-panel { min-height: 570px; padding: 24px; border: 1px solid var(--line); border-radius: 14px; background: white; }
 .toolbar { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 18px; }
@@ -398,6 +428,7 @@ a { color: inherit; text-decoration: none; }
   .dashboard-top-grid { grid-template-columns: minmax(0, 1.45fr) minmax(230px, .55fr); }
   .side-stack { grid-template-columns: 1fr 1fr; }
   .menu-admin-layout { grid-template-columns: 1fr; }
+  .calendar-settings-layout { grid-template-columns: 220px minmax(0,1fr); }
   .menu-create-form { position: static; }
 }
 
@@ -425,6 +456,8 @@ a { color: inherit; text-decoration: none; }
   .quick-compact-panel { grid-column: 1 / -1; }
   .allo-dashboard-grid, .global-map-panel { grid-template-columns: 1fr; }
   .coverage-regions, .country-sales { border-left: 0; border-top: 1px solid var(--line); }
+  .calendar-settings-layout { grid-template-columns: 1fr; }
+  .calendar-connection-card { position: static; }
   .metric-stack { grid-template-columns: 1fr 1fr; grid-template-rows: none; }
   .schedule-list, .map-list { border-left: 0; border-top: 1px solid var(--line); }
   .today { display: none; }
