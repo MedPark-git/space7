@@ -332,59 +332,6 @@ const renderCalendarView = async () => {
   }
 };
 
-const koreaMap = `
-  <svg class="map-shape" viewBox="0 0 300 390" role="img" aria-label="대한민국 지역별 커버리지 지도">
-    <path class="korea-mainland" d="M168 18l27 16 9 34-13 23 27 31-5 38 18 30-16 38-6 34-30 23-13 37-35 30-17-22-2-39-23-25 5-36-14-31 15-38-11-31 27-18 8-35 25-19 9-38z"/>
-    <path class="korea-covered" d="M175 205l37-3 19 28-16 38-6 34-30 23-13 37-19 16-15-26 11-48-12-28 16-30z"/>
-    <path class="korea-island" d="M198 350l18 7-5 14-17 5-10-10z"/>
-  </svg>`;
-
-const worldMap = `
-  <svg class="world-map" viewBox="0 0 920 430" role="img" aria-label="국가별 거래처와 매출 현황 세계 지도">
-    <g class="map-grid-lines"><path d="M0 108h920M0 215h920M0 322h920M230 0v430M460 0v430M690 0v430"/></g>
-    <g class="world-land">
-      <path d="M55 81l42-32 72-22 60 8 32 31-16 31-35 14-18 38-42 25-22 45-45-26-25-50z"/>
-      <path d="M202 204l36 15 25 48-12 54-25 70-26-31-9-64-25-45z"/>
-      <path d="M322 48l28-25 54 4 18 28-28 15-47-3z"/>
-      <path d="M398 103l36-27 57 7 25 28 44 7 20 26-22 15-42-7-27 16-36-8-23 25-31-23-28-6-10-29z"/>
-      <path d="M432 184l49 6 37 41-15 70-36 73-42-28-27-73 8-57z"/>
-      <path d="M529 89l75-42 91 7 45 39 68 21 50 52-28 42-66-1-53-33-41 14-37-20-42 14-25-32-48-5z"/>
-      <path d="M710 311l40-26 64 14 24 43-35 35-65-7-24-28z"/>
-      <path d="M837 226l15-7 14 23-18 31-14-19z"/>
-    </g>
-    <g class="world-active">
-      <path d="M62 107l92-44 75 21-19 27-18 38-42 25-33-18-37-17z"/>
-      <path d="M399 112l43-28 52 9 20 24-25 25-36-5-21 23-37-9z"/>
-      <path d="M552 105l78-39 92 15 60 39-17 41-54 13-41 14-37-20-42 14-25-32z"/>
-      <path d="M704 311l46-26 64 14 20 36-31 28-65-5z"/>
-    </g>
-  </svg>`;
-
-const alloCoverageGroups = [
-  ["전국", "122 / 780"], ["서울", "22 / 150"], ["경기·인천", "19 / 214"], ["충청·대전", "10 / 69"],
-  ["대구·경북", "52 / 86"], ["부산·울산·경남", "19 / 140"], ["호남", "0 / 94"], ["강원·제주", "0 / 27"]
-];
-
-const alloCoverageDetails = [
-  ["전국", "122 / 780", 16], ["강원", "0 / 20", 0], ["경기", "16 / 170", 9], ["경남", "2 / 62", 3],
-  ["경북", "15 / 29", 52], ["광주", "0 / 35", 0], ["대구", "37 / 57", 65], ["대전", "6 / 20", 30],
-  ["부산", "10 / 65", 15], ["서울", "22 / 150", 15], ["세종시", "0 / 1", 0], ["울산", "7 / 13", 54],
-  ["인천", "3 / 44", 7], ["전남", "0 / 31", 0]
-];
-
-const coverageMarkers = [
-  [49,24,"target"],[52,26,"target"],[47,27,"a"],[54,29,"conflict"],[45,30,"target"],[50,32,"target"],
-  [44,35,"a"],[57,37,"b"],[51,43,"target"],[47,49,"a"],[55,53,"target"],[60,57,"conflict"],
-  [54,61,"target"],[58,63,"target"],[62,65,"conflict"],[59,68,"target"],[69,70,"target"],[66,73,"a"],
-  [72,76,"target"],[65,79,"conflict"],[54,74,"b"],[43,70,"a"],[39,77,"a"],[48,84,"b"]
-];
-
-const globalMarketPoints = [
-  [21,38,"3","sales"],[49,29,"5","partner"],[53,36,"2","sales"],[57,42,"4","partner"],
-  [61,48,"6","fcst"],[67,37,"2","sales"],[73,44,"5","partner"],[79,55,"8","partner"],
-  [85,61,"3","partner"],[88,78,"1","partner"],[30,73,"1","partner"],[76,67,"2","sales"]
-];
-
 const carouselModes = ["calendar", "allo", "global"];
 const carouselMeta = {
   calendar: ["메드파크 주요 일정", "회사 주요 일정과 오늘의 일정을 함께 확인합니다."],
@@ -401,36 +348,23 @@ const renderCarousel = () => {
   $("#carouselSubtitle").textContent = subtitle;
   if (carouselMode === "calendar") renderCalendarView();
   else if (carouselMode === "allo") body.innerHTML = `
-    <section class="dashboard-grid allo-dashboard-grid">
-      <div class="coverage-filter-strip">${alloCoverageGroups.map(([region, count], index) => `<span class="coverage-chip${index === 0 ? " active" : ""}"><b>${region}</b><small>${count}</small></span>`).join("")}</div>
-      <div class="coverage-map-stage">
-        <div class="map-legend"><span><i class="area"></i>지역 커버리지</span><span><i class="target"></i>확보 타깃</span><span><i class="a"></i>미공략 A급</span><span><i class="b"></i>미공략 B급</span><span><i class="conflict"></i>업체 충돌</span></div>
-        ${koreaMap}
-        ${coverageMarkers.map(([left,top,type]) => `<i class="coverage-marker ${type}" style="--left:${left}%;--top:${top}%"></i>`).join("")}
+    <section class="source-map-panel allo-source-panel">
+      <div class="source-map-stage">
+        <figure class="source-map-crop allo-source-crop">
+          <img src="./assets/medpark-allo-coverage.png" alt="MedPark-Allo 원본 전국 지역별 커버리지 지도" />
+        </figure>
       </div>
-      <aside class="coverage-regions"><div class="source-row"><span class="authenticated-source">관리자 로그인 확인</span><a href="https://medprk-medpark-allo.mycafe24.ai/" target="_blank" rel="noopener noreferrer">MedPark-Allo 열기 ↗</a></div>
-        ${alloCoverageDetails.map(([region,count,percent], index) => `<div class="coverage-item${index === 0 ? " total" : ""}"><div><b>${region}</b><span>${count}</span></div><strong>${percent}%</strong><i><em style="width:${percent}%"></em></i></div>`).join("")}
-      </aside>
+      <footer class="source-map-footer"><span><i></i>관리자 로그인 후 확인한 원본 지도 화면</span><a href="https://medprk-medpark-allo.mycafe24.ai/" target="_blank" rel="noopener noreferrer">MedPark-Allo 열기 ↗</a></footer>
     </section>`;
   else body.innerHTML = `
-    <article class="panel span-12 global-map-panel">
-      <div class="global-kpi-strip">
-        <div><span>활동 국가</span><b>50국</b><small>거래처 99개</small></div><div><span>선택월 전체 FCST</span><b>₩0</b><small>지도 매칭 ₩0</small></div><div><span>ERP 확정매출</span><b>₩0</b><small>지도 매칭 ₩0</small></div><div><span>미결 후속조치</span><b>15건</b><small>기한 초과 2건</small></div>
+    <section class="source-map-panel global-source-panel">
+      <div class="source-map-stage">
+        <figure class="source-map-crop global-source-crop">
+          <img src="./assets/global-market-action-map.png" alt="Global-MAPS 원본 국가별 거래처 FCST ERP 확정매출 지도" />
+        </figure>
       </div>
-      <div class="global-market-stage">
-        ${worldMap}
-        ${globalMarketPoints.map(([left,top,count,type]) => `<i class="global-marker ${type}" style="--left:${left}%;--top:${top}%">${count}</i>`).join("")}
-        <div class="global-map-legend"><span><i class="erp"></i>ERP 출고 확정</span><span><i class="fcst"></i>FCST 진행</span><span><i class="sales"></i>영업추진</span><span><i class="partner"></i>거래처 등록</span></div>
-      </div>
-      <aside class="country-sales"><div class="source-row"><span class="authenticated-source">관리자 로그인 확인</span><a href="https://medprk-medpark-global-maps.mycafe24.ai/" target="_blank" rel="noopener noreferrer">Global-MAPS 열기 ↗</a></div>
-        <div class="selected-country"><span>중동</span><b>사우디아라비아</b><small>Saudi Arabia · 영업 추진</small></div>
-        <div class="country-sales-metrics"><div><span>전체 FCST</span><b>₩0</b></div><div><span>ERP 확정</span><b>₩0</b></div><div><span>거래처</span><b>6</b></div><div><span>미결</span><b>1</b></div></div>
-        <div class="sales-heading"><h3>국가별 거래처·FCST·ERP</h3><small>세부 데이터는 원본 시스템에서 확인합니다.</small></div>
-        <div class="country-row"><i>SA</i><div><b>사우디아라비아</b><span>거래처 6 · 영업 추진</span></div><strong>선택</strong></div>
-        <div class="country-row"><i>US</i><div><b>미국</b><span>북미 거래처 현황</span></div><strong>3</strong></div>
-        <div class="country-row"><i>CN</i><div><b>중국</b><span>아시아 거래처 현황</span></div><strong>8</strong></div>
-      </aside>
-    </article>`;
+      <footer class="source-map-footer"><span><i></i>관리자 로그인 후 확인한 원본 지도 화면</span><a href="https://medprk-medpark-global-maps.mycafe24.ai/" target="_blank" rel="noopener noreferrer">Global-MAPS 열기 ↗</a></footer>
+    </section>`;
   $("#carouselProgress").innerHTML = "<i></i>";
   $$('[data-carousel]').forEach((button) => button.onclick = () => { carouselMode = button.dataset.carousel; renderCarousel(); startCarousel(); });
 };

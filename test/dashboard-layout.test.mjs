@@ -54,3 +54,33 @@ test("대시보드와 일정 메뉴에 처음 들어가면 금일 일정 상세�
   assert.match(app, /const renderCalendarPage = \(\) => \{\s*resetCalendarToToday\(\)/);
   assert.match(app, /todayScheduleCount/);
 });
+
+test("30초 순환 패널은 인증 확인된 Allo·Global 지도 구조와 원본 링크를 제공한다", async () => {
+  const app = await readFile(new URL("public/app.js", root), "utf8");
+  assert.match(app, /const carouselModes = \["calendar", "allo", "global"\]/);
+  assert.match(app, /setInterval\([\s\S]*?30000\)/);
+  assert.match(app, /전국 지역별 커버리지/);
+  assert.match(app, /국가별 거래처 FCST ERP 확정매출/);
+  assert.match(app, /https:\/\/medprk-medpark-allo\.mycafe24\.ai\//);
+  assert.match(app, /https:\/\/medprk-medpark-global-maps\.mycafe24\.ai\//);
+  assert.match(app, /관리자 로그인 후 확인한 원본 지도 화면/);
+  assert.doesNotMatch(app, /source-password|source-username|관리자 비밀번호/);
+});
+
+test("Allo·Global 시각화는 확인된 원본 지도 이미지와 정확한 반응형 크롭을 사용한다", async () => {
+  const [css, app, alloImage, globalImage] = await Promise.all([
+    readFile(new URL("public/styles.css", root), "utf8"),
+    readFile(new URL("public/app.js", root), "utf8"),
+    readFile(new URL("public/assets/medpark-allo-coverage.png", root)),
+    readFile(new URL("public/assets/global-market-action-map.png", root))
+  ]);
+  assert.deepEqual([alloImage.readUInt32BE(16), alloImage.readUInt32BE(20)], [1619, 1476]);
+  assert.deepEqual([globalImage.readUInt32BE(16), globalImage.readUInt32BE(20)], [2048, 1198]);
+  assert.match(app, /assets\/medpark-allo-coverage\.png/);
+  assert.match(app, /assets\/global-market-action-map\.png/);
+  assert.doesNotMatch(app, /const koreaMap|const worldMap|coverageMarkers|globalMarketPoints/);
+  assert.match(css, /\.allo-source-crop \{[^}]*2\.0703/);
+  assert.match(css, /\.global-source-crop \{[^}]*2\.65/);
+  assert.match(css, /\.source-map-crop img \{[^}]*width:\s*100%[^}]*height:\s*auto/);
+  assert.match(css, /@media \(max-width: 820px\)[\s\S]*?\.source-map-crop \{ width: 100%; height: 100%; \}/);
+});
