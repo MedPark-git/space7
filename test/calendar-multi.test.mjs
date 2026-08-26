@@ -58,6 +58,8 @@ test("선택한 모든 캘린더의 일정을 병합하고 출처를 보존한�
   assert.equal(result.calendar_count, 2);
   assert.equal(result.events.length, 2);
   assert.deepEqual(result.events.map((event) => event.calendar_name), ["메드파크 기본 일정", "전사 주요 일정"]);
+  assert.deepEqual(result.events.map((event) => event.calendar_color), ["#0a9b7e", "#f6bf26"]);
+  assert.deepEqual(result.events.map((event) => event.calendar_foreground), ["#ffffff", "#1d1d1d"]);
   assert.equal(new Set(result.events.map((event) => event.id)).size, 2);
   assert.deepEqual(result.warnings, []);
 

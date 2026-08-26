@@ -244,7 +244,7 @@ const renderCalendarDays = (events = []) => {
     const key = calendarKey(date);
     const dayEvents = events.filter((event) => eventDateKey(event) === key);
     const muted = date.getMonth() !== calendarMonth.getMonth();
-    return `<div class="${muted ? "muted-day" : ""} ${key === todayKey ? "today-day" : ""}">${date.getDate()}${dayEvents.slice(0,2).map((event) => `<span class="event-dot">${escapeHtml(event.title)}</span>`).join("")}${dayEvents.length > 2 ? `<small class="more-events">+${dayEvents.length - 2}</small>` : ""}</div>`;
+    return `<div class="${muted ? "muted-day" : ""} ${key === todayKey ? "today-day" : ""}">${date.getDate()}${dayEvents.slice(0,2).map((event) => `<span class="event-dot" style="--event-color:${escapeHtml(event.calendar_color || "#0a9b7e")};--event-foreground:${escapeHtml(event.calendar_foreground || "#ffffff")}" title="${escapeHtml(event.calendar_name || "Google Calendar")}">${escapeHtml(event.title)}</span>`).join("")}${dayEvents.length > 2 ? `<small class="more-events">+${dayEvents.length - 2}</small>` : ""}</div>`;
   }).join("");
   return heads + days;
 };
@@ -268,7 +268,7 @@ const renderCalendarView = async () => {
     const scheduleHtml = focusEvents.length ? focusEvents.slice(0,5).map((event) => {
       const start = event.all_day ? "종일" : new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.start));
       const end = event.all_day || !event.end ? "" : new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.end));
-      return `<div class="schedule-item"><time>${escapeHtml(start)}${end ? ` - ${escapeHtml(end)}` : ""}</time><b>${escapeHtml(event.title)}</b><span>${event.calendar_color ? `<i class="calendar-color-dot" style="--calendar-color:${escapeHtml(event.calendar_color)}"></i>` : ""}${escapeHtml(event.calendar_name || event.location || "Google Calendar")}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</span></div>`;
+      return `<div class="schedule-item" style="--event-color:${escapeHtml(event.calendar_color || "#0a9b7e")}"><time>${escapeHtml(start)}${end ? ` - ${escapeHtml(end)}` : ""}</time><b>${escapeHtml(event.title)}</b><span>${event.calendar_color ? `<i class="calendar-color-dot" style="--calendar-color:${escapeHtml(event.calendar_color)}"></i>` : ""}${escapeHtml(event.calendar_name || event.location || "Google Calendar")}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</span></div>`;
     }).join("") : '<p class="calendar-empty">등록된 일정이 없습니다.</p>';
     body.innerHTML = `<div class="calendar-view main-calendar-view">
       <div class="calendar-area"><div class="calendar-top"><button id="calendarPrev" aria-label="이전 달">‹</button><b>${year}년 ${month}월</b><button id="calendarNext" aria-label="다음 달">›</button></div><div class="calendar-grid">${renderCalendarDays(events)}</div></div>

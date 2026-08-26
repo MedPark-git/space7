@@ -7,8 +7,8 @@ globalThis.fetch = async (input, init) => {
   }
   if (url.hostname === "www.googleapis.com" && url.pathname === "/calendar/v3/users/me/calendarList") {
     return Response.json({ items: [
-      { id: "medpark.remote@gmail.com", summary: "메드파크 기본 일정", backgroundColor: "#0a9b7e", primary: true, accessRole: "owner" },
-      { id: "team@group.calendar.google.com", summary: "전사 주요 일정", backgroundColor: "#f6bf26", accessRole: "reader" }
+      { id: "medpark.remote@gmail.com", summary: "메드파크 기본 일정", backgroundColor: "#0a9b7e", foregroundColor: "#ffffff", primary: true, accessRole: "owner" },
+      { id: "team@group.calendar.google.com", summary: "전사 주요 일정", backgroundColor: "#f6bf26", foregroundColor: "#1d1d1d", accessRole: "reader" }
     ] });
   }
   const match = url.hostname === "www.googleapis.com" && url.pathname.match(/^\/calendar\/v3\/calendars\/([^/]+)\/events$/);

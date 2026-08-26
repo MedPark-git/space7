@@ -128,11 +128,12 @@ const initDatabase = async () => {
     );
     CREATE TABLE IF NOT EXISTS calendar_integration_calendars (
       calendar_id varchar(255) PRIMARY KEY, summary varchar(255) NOT NULL,
-      background_color varchar(20), primary_calendar boolean NOT NULL DEFAULT false,
+      background_color varchar(20), foreground_color varchar(20), primary_calendar boolean NOT NULL DEFAULT false,
       access_role varchar(30), item_order integer NOT NULL DEFAULT 0,
       updated_by uuid REFERENCES users(id) ON DELETE SET NULL,
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+    ALTER TABLE calendar_integration_calendars ADD COLUMN IF NOT EXISTS foreground_color varchar(20);
   `);
   const count = Number((await pool.query("SELECT count(*)::int AS count FROM users WHERE status::text = 'active' AND role::text = 'admin'")).rows[0].count);
   if (count === 0) {
@@ -275,7 +276,7 @@ const getCalendarSettingsRow = async () => {
 
 const getSelectedCalendars = async (row = null) => {
   const selected = pool
-    ? (await pool.query("SELECT calendar_id,summary,background_color,primary_calendar,access_role,item_order FROM calendar_integration_calendars ORDER BY item_order,summary")).rows
+    ? (await pool.query("SELECT calendar_id,summary,background_color,foreground_color,primary_calendar,access_role,item_order FROM calendar_integration_calendars ORDER BY item_order,summary")).rows
     : [...memory.calendarSelections.values()].sort((a, b) => a.item_order - b.item_order);
   if (selected.length) return selected;
   const fallback = row || await getCalendarSettingsRow();
@@ -396,7 +397,9 @@ const fetchGoogleCalendarList = async (row) => {
     const data = await response.json();
     calendars.push(...(data.items || []).filter((item) => item.id).map((item) => ({
       calendar_id: String(item.id), summary: String(item.summaryOverride || item.summary || item.id),
-      background_color: item.backgroundColor || null, primary_calendar: Boolean(item.primary),
+      background_color: /^#[0-9a-f]{6}$/i.test(String(item.backgroundColor || "")) ? item.backgroundColor : "#0a9b7e",
+      foreground_color: /^#[0-9a-f]{6}$/i.test(String(item.foregroundColor || "")) ? item.foregroundColor : "#ffffff",
+      primary_calendar: Boolean(item.primary),
       access_role: item.accessRole || "reader"
     })));
     pageToken = data.nextPageToken || "";
@@ -425,8 +428,8 @@ const saveSelectedCalendars = async (input, actor, ip) => {
       await client.query("BEGIN");
       await client.query("DELETE FROM calendar_integration_calendars");
       for (const item of selected) await client.query(
-        "INSERT INTO calendar_integration_calendars (calendar_id,summary,background_color,primary_calendar,access_role,item_order,updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-        [item.calendar_id,item.summary,item.background_color,item.primary_calendar,item.access_role,item.item_order,actor.id]
+        "INSERT INTO calendar_integration_calendars (calendar_id,summary,background_color,foreground_color,primary_calendar,access_role,item_order,updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+        [item.calendar_id,item.summary,item.background_color,item.foreground_color,item.primary_calendar,item.access_role,item.item_order,actor.id]
       );
       await client.query("UPDATE calendar_integration_settings SET calendar_id=$1,updated_by=$2,updated_at=now() WHERE id=1", [selected[0].calendar_id,actor.id]);
       await client.query("COMMIT");
@@ -456,7 +459,8 @@ const fetchEventsForCalendar = async (calendar, params, headers) => {
     events.push(...(data.items || []).filter((event) => event.status !== "cancelled").map((event) => ({
       id: `${calendar.calendar_id}:${event.id}`, source_event_id: event.id,
       calendar_id: calendar.calendar_id, calendar_name: calendar.summary,
-      calendar_color: calendar.background_color || "", title: event.summary || "제목 없는 일정",
+      calendar_color: calendar.background_color || "#0a9b7e", calendar_foreground: calendar.foreground_color || "#ffffff",
+      title: event.summary || "제목 없는 일정",
       start: event.start?.dateTime || event.start?.date, end: event.end?.dateTime || event.end?.date,
       all_day: Boolean(event.start?.date), location: event.location || "", html_link: event.htmlLink || ""
     })));
