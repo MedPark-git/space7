@@ -22,3 +22,12 @@ test("캘린더 일정은 Google 캘린더 고유 배경색과 글자색을 사�
   assert.match(app, /event\.calendar_color/);
   assert.match(app, /event\.calendar_foreground/);
 });
+
+test("캘린더 7개 요일 열은 좁은 화면에서도 잘리지 않고 상세 목록만 아래로 이동한다", async () => {
+  const css = await readFile(new URL("public/styles.css", root), "utf8");
+  assert.match(css, /grid-template-columns:\s*repeat\(7,\s*minmax\(0,1fr\)\)/);
+  assert.match(css, /\.calendar-grid\s*>\s*div\s*\{[^}]*min-width:\s*0/);
+  assert.match(css, /container:\s*dashboard-main\s*\/\s*inline-size/);
+  assert.match(css, /@container dashboard-main \(max-width: 700px\)[\s\S]*?\.main-calendar-view \{ grid-template-columns: minmax\(0,1fr\); \}/);
+  assert.match(css, /@container dashboard-main \(max-width: 700px\)[\s\S]*?\.dashboard-page \.schedule-list \{[^}]*border-top/);
+});
