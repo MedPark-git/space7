@@ -11,7 +11,7 @@ const port = Number(process.env.PORT || 3000);
 const sessionCookie = "medpark_session";
 const sessionTtlMs = 12 * 60 * 60 * 1000;
 const usernamePattern = /^[A-Za-z0-9._-]{4,30}$/;
-const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json; charset=utf-8" };
+const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json; charset=utf-8" };
 const staticCacheControl = (extension) => extension === ".html" ? "no-store, max-age=0" : "no-cache, max-age=0, must-revalidate";
 const dbConfig = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"].every((key) => process.env[key]);
 let pool = null;
