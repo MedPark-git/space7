@@ -280,6 +280,7 @@ a { color: inherit; text-decoration: none; }
 .notice-item span { display: block; margin-top: 5px; color: #929d9a; font-size: 8px; }
 .carousel-progress { height: 3px; background: #e9efed; }
 .carousel-progress i { display: block; height: 100%; width: 0; background: var(--green-600); animation: progress 30s linear forwards; }
+.main-carousel-panel.carousel-paused .carousel-progress i { animation-play-state: paused; }
 @keyframes progress { to { width: 100%; } }
 
 .integration-badge { display: inline-flex; margin-top: 4px; padding: 6px 8px; border-radius: 6px; background: #eaf5f1; color: var(--green-800); font-size: 8px; font-weight: 750; }
