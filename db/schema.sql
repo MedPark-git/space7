@@ -8,7 +8,8 @@ CREATE TYPE click_action AS ENUM ('show_data', 'redirect');
 
 CREATE TABLE users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email varchar(255) UNIQUE NOT NULL,
+  username varchar(30) UNIQUE NOT NULL,
+  email varchar(255) UNIQUE,
   password_hash text NOT NULL,
   name varchar(100) NOT NULL,
   employee_no varchar(50) UNIQUE,
@@ -16,8 +17,16 @@ CREATE TABLE users (
   status user_status NOT NULL DEFAULT 'active',
   role user_role NOT NULL DEFAULT 'basic',
   terminated_at timestamptz,
+  password_changed_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE portal_sessions (
+  token_hash char(64) PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE menus (
@@ -99,6 +108,8 @@ CREATE TABLE sso_config (
 );
 
 CREATE INDEX idx_menus_parent_sort ON menus(parent_id, sort_order);
+CREATE UNIQUE INDEX idx_users_username_lower ON users(lower(username));
+CREATE INDEX idx_portal_sessions_expires ON portal_sessions(expires_at);
 CREATE INDEX idx_calendar_events_start ON calendar_events(start_at);
 CREATE INDEX idx_map_items_region ON map_items(region);
 CREATE INDEX idx_meeting_notes_meeting_at ON meeting_notes(meeting_at DESC);
