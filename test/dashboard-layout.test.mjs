@@ -111,6 +111,12 @@ test("Allo·Global 시각화는 확인된 원본 지도 이미지의 지도 영�
   assert.match(css, /@media \(max-width: 820px\)[\s\S]*?\.source-map-crop \{ width: 100%; height: 100%; \}/);
 });
 
+test("Global MAP 지도 위아래의 여백은 흰색으로 표시된다", async () => {
+  const css = await readFile(new URL("public/styles.css", root), "utf8");
+  assert.match(css, /\.global-source-panel, \.global-source-panel \.source-map-stage \{ background: #fff; \}/);
+  assert.doesNotMatch(css, /\.global-source-panel \.source-map-stage \{ background: #073f4b; \}/);
+});
+
 test("국내지도 지역과 세계지도 국가를 클릭하면 선택 상태와 상세 정보가 갱신된다", async () => {
   const [css, app] = await Promise.all([
     readFile(new URL("public/styles.css", root), "utf8"),
