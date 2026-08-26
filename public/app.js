@@ -45,6 +45,20 @@ let currentUser = null;
 let employeeCache = [];
 let editingEmployeeId = null;
 
+const editableMenuIds = new Set(["management", "marketing", "technology", "amarans", "meetings", "calendar"]);
+const editableMenuItems = () => menuGroups.flatMap((group) => group.items).filter((item) => editableMenuIds.has(item.id));
+
+const loadMenuLabels = async () => {
+  try {
+    const response = await fetch("/api/menu", { headers: { accept: "application/json" } });
+    if (!response.ok) return;
+    const { labels = {} } = await response.json();
+    editableMenuItems().forEach((item) => {
+      if (typeof labels[item.id] === "string" && labels[item.id].trim()) item.title = labels[item.id].trim();
+    });
+  } catch {}
+};
+
 const showToast = (message) => {
   const toast = $("#toast");
   toast.textContent = message;
@@ -96,7 +110,7 @@ loginForm.addEventListener("submit", async (event) => {
     sessionStorage.setItem("medpark-preview-session", JSON.stringify(result.user));
     await new Promise((resolve) => setTimeout(resolve, 350));
     closeLogin();
-    showApp();
+    await showApp();
     showToast(`${result.user.name}님, 환영합니다.`);
   } catch (error) {
     $("#loginError").textContent = error.message || "로그인 중 오류가 발생했습니다.";
@@ -218,49 +232,87 @@ const startCarousel = () => {
 const renderDashboard = () => {
   pageContent.innerHTML = `
     <section class="page-heading"><div><span class="eyebrow">OVERVIEW</span><h1>안녕하세요, ${currentUser?.name || "임직원"}님</h1><p>오늘의 주요 일정과 사업 현황을 한눈에 확인하세요.</p></div><span class="live-status"><i></i> 시스템 정상 운영 중</span></section>
-    <section class="metric-grid">
-      <article class="metric-card"><div class="metric-label"><span>오늘의 일정</span><i class="metric-icon">□</i></div><strong>3</strong><small>건 예정</small></article>
-      <article class="metric-card"><div class="metric-label"><span>진행 프로젝트</span><i class="metric-icon">◎</i></div><strong>33</strong><small>건 진행</small></article>
-      <article class="metric-card"><div class="metric-label"><span>새 회의록</span><i class="metric-icon">☷</i></div><strong>5</strong><small>건 등록</small></article>
-      <article class="metric-card"><div class="metric-label"><span>연결 시스템</span><i class="metric-icon">◇</i></div><strong>8</strong><small>개 정상</small></article>
+    <section class="dashboard-summary">
+      <div class="metric-stack">
+        <article class="metric-card"><div class="metric-label"><span>오늘의 일정</span><i class="metric-icon">□</i></div><strong>3</strong><small>건 예정</small></article>
+        <article class="metric-card"><div class="metric-label"><span>새 회의록</span><i class="metric-icon">☷</i></div><strong>5</strong><small>건 등록</small></article>
+      </div>
+      <article class="panel quick-panel"><header class="panel-header"><div><h2>자주 찾는 시스템</h2><p>외부 시스템 바로가기</p></div><span>↗</span></header><div class="quick-grid">
+        <a class="quick-link" href="https://medprk-ar-dashboard.mycafe24.ai/" target="_blank" rel="noopener noreferrer"><i>₩</i><b>미수채권</b></a>
+        <a class="quick-link" href="https://medprk-medpark-hr-maps.mycafe24.ai/" target="_blank" rel="noopener noreferrer"><i>♙</i><b>HR</b></a>
+        <a class="quick-link" href="https://medprk-medpark-allo.mycafe24.ai/" target="_blank" rel="noopener noreferrer"><i>◫</i><b>MedPark-Allo</b></a>
+        <a class="quick-link" href="https://medprk-medpark-global-maps.mycafe24.ai/" target="_blank" rel="noopener noreferrer"><i>◎</i><b>Global-MAPS</b></a>
+      </div></article>
     </section>
-    <section class="dashboard-grid">
-      <article class="panel">
-        <header class="panel-header"><div><h2>워크스페이스 현황</h2><p>캘린더와 진행 지도를 30초마다 자동 전환합니다.</p></div><div class="segmented"><button data-carousel="calendar" class="active">캘린더</button><button data-carousel="map">진행 지도</button></div></header>
-        <div id="carouselBody" class="carousel-body"></div><div id="carouselProgress" class="carousel-progress"><i></i></div>
-      </article>
-      <aside class="side-stack">
-        <article class="panel"><header class="panel-header"><div><h2>자주 찾는 시스템</h2><p>외부 시스템 바로가기</p></div><span>↗</span></header><div class="quick-grid">
-          <button class="quick-link" data-quick="미수채권"><i>₩</i><b>미수채권</b></button><button class="quick-link" data-quick="HR"><i>♙</i><b>HR</b></button><button class="quick-link" data-quick="아마란스"><i>A</i><b>아마란스</b></button><button class="quick-link" data-quick="Global-MAPS"><i>◎</i><b>Global-MAPS</b></button>
-        </div></article>
-        <article class="panel"><header class="panel-header"><div><h2>공지 및 업데이트</h2><p>포털 운영 소식</p></div><span>＋</span></header><div class="notice-list">
-          <div class="notice-item"><b>사내 통합 포털 1차 미리보기 안내</b><span>오늘 · IT 운영팀</span></div><div class="notice-item"><b>개인정보 보호 및 보안 정책 안내</b><span>8월 25일 · 경영지원본부</span></div><div class="notice-item"><b>Google Calendar 연동 준비 중</b><span>8월 24일 · 시스템</span></div>
-        </div></article>
-      </aside>
-    </section>`;
+    <article class="panel workspace-panel">
+      <header class="panel-header"><div><h2>워크스페이스 현황</h2><p>캘린더와 진행 지도를 30초마다 자동 전환합니다.</p></div><div class="segmented"><button data-carousel="calendar" class="active">캘린더</button><button data-carousel="map">진행 지도</button></div></header>
+      <div id="carouselBody" class="carousel-body"></div><div id="carouselProgress" class="carousel-progress"><i></i></div>
+    </article>`;
   renderCarousel();
   startCarousel();
-  $$('[data-quick]').forEach((button) => button.addEventListener("click", () => showToast(`${button.dataset.quick} URL은 포털 관리에서 등록합니다.`)));
 };
 
 const renderAdmin = () => {
   pageContent.innerHTML = `
     <section class="page-heading"><div><span class="eyebrow">ADMINISTRATION</span><h1>포털 관리</h1><p>임직원, 메뉴와 접근 권한을 코드 수정 없이 관리합니다.</p></div><button id="addEmployee" class="button primary">＋ 임직원 등록</button></section>
-    <section class="content-panel"><div class="admin-tabs"><button class="active">임직원 관리</button><button>메뉴 관리</button><button>권한 관리</button><button>감사 로그</button></div>
-      <div class="toolbar"><input id="employeeSearch" placeholder="계정 ID, 이름, 사번, 부서 검색" /><span class="live-status"><i></i> 활성 임직원 <b id="activeCount">-</b>명</span></div>
-      <table class="data-table"><thead><tr><th>계정 ID</th><th>성명</th><th>사번</th><th>소속</th><th>권한</th><th>상태</th><th>관리</th></tr></thead><tbody id="employeeRows"><tr><td colspan="7">계정 정보를 불러오는 중입니다.</td></tr></tbody></table>
-    </section>`;
-  loadEmployees();
-  $("#employeeSearch").addEventListener("input", (event) => {
-    const q = event.target.value.toLowerCase();
-    renderEmployees(employeeCache.filter((user) => Object.values(user).join(" ").toLowerCase().includes(q)));
-  });
-  $("#addEmployee").addEventListener("click", openCreateEmployee);
-  $$(".admin-tabs button").forEach((button) => button.addEventListener("click", () => {
-    $$(".admin-tabs button").forEach((tab) => tab.classList.remove("active"));
-    button.classList.add("active");
-    if (button.textContent !== "임직원 관리") showToast(`${button.textContent} 화면은 다음 구현 단계에서 연결됩니다.`);
+    <section class="content-panel"><div class="admin-tabs"><button class="active" data-admin-tab="employees">임직원 관리</button><button data-admin-tab="menus">메뉴 관리</button><button data-admin-tab="permissions">권한 관리</button><button data-admin-tab="audits">감사 로그</button></div><div id="adminBody"></div></section>`;
+  renderAdminTab("employees");
+  $$('.admin-tabs [data-admin-tab]').forEach((button) => button.addEventListener("click", () => {
+    $$('.admin-tabs [data-admin-tab]').forEach((tab) => tab.classList.toggle("active", tab === button));
+    renderAdminTab(button.dataset.adminTab);
   }));
+};
+
+const renderAdminTab = (tab) => {
+  const body = $("#adminBody");
+  const addButton = $("#addEmployee");
+  if (tab === "employees") {
+    addButton.hidden = false;
+    body.innerHTML = `
+      <div class="toolbar"><input id="employeeSearch" placeholder="계정 ID, 이름, 사번, 부서 검색" /><span class="live-status"><i></i> 활성 임직원 <b id="activeCount">-</b>명</span></div>
+      <table class="data-table"><thead><tr><th>계정 ID</th><th>성명</th><th>사번</th><th>소속</th><th>권한</th><th>상태</th><th>관리</th></tr></thead><tbody id="employeeRows"><tr><td colspan="7">계정 정보를 불러오는 중입니다.</td></tr></tbody></table>`;
+    loadEmployees();
+    $("#employeeSearch").addEventListener("input", (event) => {
+      const q = event.target.value.toLowerCase();
+      renderEmployees(employeeCache.filter((user) => Object.values(user).join(" ").toLowerCase().includes(q)));
+    });
+    addButton.onclick = openCreateEmployee;
+    return;
+  }
+  addButton.hidden = true;
+  if (tab === "menus") {
+    body.innerHTML = `
+      <form id="menuLabelsForm" class="menu-labels-form">
+        <div class="menu-manager-heading"><div><h2>카테고리 이름 관리</h2><p>왼쪽 메뉴에 표시되는 카테고리 이름을 수정합니다. 연결 주소와 권한은 유지됩니다.</p></div><button class="button primary" type="submit">변경사항 저장</button></div>
+        <div class="menu-label-grid">${editableMenuItems().map((item) => `<label><span>${escapeHtml(item.id)}</span><input name="${escapeHtml(item.id)}" value="${escapeHtml(item.title)}" minlength="1" maxlength="40" required /></label>`).join("")}</div>
+        <p id="menuLabelsError" class="form-error"></p>
+      </form>`;
+    $("#menuLabelsForm").addEventListener("submit", saveMenuLabels);
+    return;
+  }
+  body.innerHTML = `<div class="placeholder-state compact"><div><i>${tab === "permissions" ? "◇" : "☷"}</i><h2>${tab === "permissions" ? "권한 관리" : "감사 로그"}</h2><p>이 기능은 다음 구현 단계에서 연결됩니다.</p></div></div>`;
+};
+
+const saveMenuLabels = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const labels = Object.fromEntries(new FormData(form));
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  $("#menuLabelsError").textContent = "";
+  try {
+    const response = await fetch("/api/admin/menu", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ labels }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    editableMenuItems().forEach((item) => { if (result.labels[item.id]) item.title = result.labels[item.id]; });
+    renderNavigation();
+    $("#breadcrumbText").textContent = "포털 관리";
+    showToast("카테고리 이름이 저장되었습니다.");
+  } catch (error) {
+    $("#menuLabelsError").textContent = error.message || "카테고리 이름 저장에 실패했습니다.";
+  } finally {
+    submit.disabled = false;
+  }
 };
 
 const loadEmployees = async () => {
@@ -270,14 +322,16 @@ const loadEmployees = async () => {
     const result = await response.json();
     if (!response.ok) throw new Error(result.message);
     employeeCache = result.users;
+    if (!$("#employeeRows")) return;
     renderEmployees(employeeCache);
-    $("#activeCount").textContent = employeeCache.filter((user) => user.status === "active").length;
+    if ($("#activeCount")) $("#activeCount").textContent = employeeCache.filter((user) => user.status === "active").length;
   } catch (error) {
-    $("#employeeRows").innerHTML = `<tr><td colspan="7">${escapeHtml(error.message || "계정 정보를 불러오지 못했습니다.")}</td></tr>`;
+    if ($("#employeeRows")) $("#employeeRows").innerHTML = `<tr><td colspan="7">${escapeHtml(error.message || "계정 정보를 불러오지 못했습니다.")}</td></tr>`;
   }
 };
 
 const renderEmployees = (rows) => {
+  if (!$("#employeeRows")) return;
   $("#employeeRows").innerHTML = rows.map((user) => `<tr>
     <td><b>${escapeHtml(user.username)}</b></td><td>${escapeHtml(user.name)}</td><td>${escapeHtml(user.employee_no || "-")}</td><td>${escapeHtml(user.department || "-")}</td>
     <td><span class="tag">${user.role === "admin" ? "관리자" : "기본"}</span></td><td><span class="tag ${user.status !== "active" ? "gray" : ""}">${user.status === "active" ? "활성" : "비활성"}</span></td>
@@ -377,8 +431,8 @@ $("#closeSidebar").addEventListener("click", closeSidebar);
 $("#sidebarBackdrop").addEventListener("click", closeSidebar);
 
 const setupSearch = () => {
-  const allItems = menuGroups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.label })));
   const draw = (query = "") => {
+    const allItems = menuGroups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.label })));
     const items = allItems.filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
     $("#searchResults").innerHTML = items.map((item) => `<button type="button" class="search-result" data-search-page="${item.id}"><b>${item.icon} &nbsp; ${item.title}</b><span>${item.group}</span></button>`).join("") || '<div style="padding:30px;text-align:center;color:#8a9693;font-size:11px">검색 결과가 없습니다.</div>';
     $$('[data-search-page]').forEach((button) => button.addEventListener("click", () => { searchDialog.close(); navigate(button.dataset.searchPage); }));
@@ -392,9 +446,10 @@ const setupSearch = () => {
 
 $("#noticeButton").addEventListener("click", () => showToast("읽지 않은 알림이 3개 있습니다."));
 
-const showApp = () => {
+const showApp = async () => {
   guestView.hidden = true;
   appView.hidden = false;
+  await loadMenuLabels();
   const now = new Date();
   $("#todayLabel").textContent = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" }).format(now);
   $(".profile b").textContent = currentUser?.name || "임직원";
@@ -415,7 +470,7 @@ if (location.protocol === "file:" && new URLSearchParams(location.search).get("m
     const result = await response.json();
     currentUser = result.user;
     sessionStorage.setItem("medpark-preview-session", JSON.stringify(result.user));
-    showApp();
+    await showApp();
   }).catch(() => {
     sessionStorage.removeItem("medpark-preview-session");
     guestView.hidden = false;
