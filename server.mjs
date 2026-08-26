@@ -55,6 +55,9 @@ const initDatabase = async () => {
     );
     ALTER TABLE users ADD COLUMN IF NOT EXISTS username varchar(30);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz NOT NULL DEFAULT now();
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS terminated_at timestamptz;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS department varchar(150);
     ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users (lower(username)) WHERE username IS NOT NULL;
     CREATE TABLE IF NOT EXISTS portal_sessions (
@@ -123,15 +126,46 @@ const updateUser = async (id, input, actor, ip) => {
   if (actor.id === id && role !== "admin") throw Object.assign(new Error("현재 로그인한 관리자의 권한은 해제할 수 없습니다."), { status: 400 });
   if (input.password && String(input.password).length < 8) throw Object.assign(new Error("비밀번호는 8자 이상이어야 합니다."), { status: 400 });
   const passwordHash = input.password ? await hashPassword(String(input.password)) : existing.password_hash;
-  const changes = { name, employee_no: employeeNo, department, email, role, status, password_reset: Boolean(input.password) };
+  const changes = {};
+  if (has("name")) changes.name = name;
+  if (has("employee_no")) changes.employee_no = employeeNo;
+  if (has("department")) changes.department = department;
+  if (has("email")) changes.email = email;
+  if (has("role")) changes.role = role;
+  if (has("status")) changes.status = status;
+  if (input.password) changes.password_reset = true;
   if (pool) {
-    const row = (await pool.query(`UPDATE users SET name=$2, employee_no=$3, department=$4, email=$5, status=$6, role=$7, password_hash=$8, password_changed_at=CASE WHEN $9 THEN now() ELSE password_changed_at END, terminated_at=CASE WHEN $6::text='terminated' THEN now() ELSE NULL END, updated_at=now() WHERE id=$1 RETURNING *`, [id,name,employeeNo,department,email,status,role,passwordHash,Boolean(input.password)])).rows[0];
-    if (status === "terminated" || input.password) await pool.query("DELETE FROM portal_sessions WHERE user_id=$1", [id]);
+    const values = [id];
+    const assignments = [];
+    const assign = (column, value) => { values.push(value); assignments.push(`${column}=$${values.length}`); };
+    if (has("name")) assign("name", name);
+    if (has("employee_no")) assign("employee_no", employeeNo);
+    if (has("department")) assign("department", department);
+    if (has("email")) assign("email", email);
+    if (has("role")) assign("role", role);
+    if (has("status")) {
+      assign("status", status);
+      assign("terminated_at", status === "terminated" ? new Date() : null);
+    }
+    if (input.password) {
+      assign("password_hash", passwordHash);
+      assign("password_changed_at", new Date());
+    }
+    if (!assignments.length) return publicUser(existing);
+    assignments.push("updated_at=now()");
+    const row = (await pool.query(`UPDATE users SET ${assignments.join(", ")} WHERE id=$1 RETURNING *`, values)).rows[0];
+    if ((has("status") && status === "terminated") || input.password) await pool.query("DELETE FROM portal_sessions WHERE user_id=$1", [id]);
     await writeAudit(actor.id, "user.update", "user", id, changes, ip);
     return publicUser(row);
   }
-  Object.assign(existing, { name, employee_no: employeeNo, department, email, status, role, password_hash: passwordHash, terminated_at: status === "terminated" ? new Date().toISOString() : null });
-  if (status === "terminated" || input.password) for (const [token, session] of memory.sessions) if (session.userId === id) memory.sessions.delete(token);
+  if (has("name")) existing.name = name;
+  if (has("employee_no")) existing.employee_no = employeeNo;
+  if (has("department")) existing.department = department;
+  if (has("email")) existing.email = email;
+  if (has("role")) existing.role = role;
+  if (has("status")) Object.assign(existing, { status, terminated_at: status === "terminated" ? new Date().toISOString() : null });
+  if (input.password) existing.password_hash = passwordHash;
+  if ((has("status") && status === "terminated") || input.password) for (const [token, session] of memory.sessions) if (session.userId === id) memory.sessions.delete(token);
   await writeAudit(actor.id, "user.update", "user", id, changes, ip);
   return publicUser(existing);
 };
@@ -217,6 +251,8 @@ const server = http.createServer(async (req, res) => {
     }
   } catch (error) {
     if (error?.code === "23505") return sendJson(res, 409, { message: "이미 사용 중인 계정 ID 또는 사번입니다." });
+    if (error?.code === "23502") return sendJson(res, 400, { message: "필수 계정 정보를 모두 입력해 주세요." });
+    console.error("Request failed", { method: req.method, path: req.url, code: error?.code, message: error?.message });
     sendJson(res, error.status || 500, { message: error.status ? error.message : "서버 처리 중 오류가 발생했습니다." });
   }
 });
