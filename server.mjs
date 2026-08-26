@@ -15,7 +15,8 @@ const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=u
 const staticCacheControl = (extension) => extension === ".html" ? "no-store, max-age=0" : "no-cache, max-age=0, must-revalidate";
 const dbConfig = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"].every((key) => process.env[key]);
 let pool = null;
-const memory = { users: new Map(), sessions: new Map(), audits: [] };
+const memory = { users: new Map(), sessions: new Map(), audits: [], menuLabels: new Map() };
+const editableMenuIds = new Set(["management", "marketing", "technology", "amarans", "meetings", "calendar"]);
 
 const hashPassword = async (password) => {
   const salt = randomBytes(16).toString("hex");
@@ -69,6 +70,10 @@ const initDatabase = async () => {
       action varchar(100) NOT NULL, target_type varchar(100), target_id varchar(255),
       metadata jsonb NOT NULL DEFAULT '{}'::jsonb, ip_address inet, created_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS portal_menu_labels (
+      menu_id varchar(50) PRIMARY KEY, label varchar(40) NOT NULL,
+      updated_by uuid REFERENCES users(id) ON DELETE SET NULL, updated_at timestamptz NOT NULL DEFAULT now()
+    );
   `);
   const count = Number((await pool.query("SELECT count(*)::int AS count FROM users WHERE status::text = 'active' AND role::text = 'admin'")).rows[0].count);
   if (count === 0) {
@@ -90,6 +95,41 @@ const listUsers = async () => {
 const writeAudit = async (actorId, action, targetType, targetId, metadata, ip) => {
   if (pool) await pool.query("INSERT INTO audit_logs (actor_user_id,action,target_type,target_id,metadata,ip_address) VALUES ($1,$2,$3,$4,$5,$6)", [actorId,action,targetType,targetId,metadata,ip || null]);
   else memory.audits.push({ actorId, action, targetType, targetId, metadata, ip, createdAt: new Date().toISOString() });
+};
+
+const listMenuLabels = async () => {
+  if (pool) return Object.fromEntries((await pool.query("SELECT menu_id, label FROM portal_menu_labels")).rows.map((row) => [row.menu_id, row.label]));
+  return Object.fromEntries(memory.menuLabels);
+};
+
+const updateMenuLabels = async (input, actor, ip) => {
+  const labels = input && typeof input.labels === "object" && !Array.isArray(input.labels) ? input.labels : null;
+  if (!labels) throw Object.assign(new Error("수정할 카테고리 이름을 입력해 주세요."), { status: 400 });
+  const normalized = {};
+  for (const [id, raw] of Object.entries(labels)) {
+    if (!editableMenuIds.has(id)) throw Object.assign(new Error("수정할 수 없는 카테고리입니다."), { status: 400 });
+    const label = String(raw || "").trim();
+    if (!label || label.length > 40) throw Object.assign(new Error("카테고리 이름은 1~40자로 입력해 주세요."), { status: 400 });
+    normalized[id] = label;
+  }
+  if (!Object.keys(normalized).length) throw Object.assign(new Error("수정할 카테고리를 선택해 주세요."), { status: 400 });
+  if (pool) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const [id, label] of Object.entries(normalized)) {
+        await client.query("INSERT INTO portal_menu_labels (menu_id,label,updated_by) VALUES ($1,$2,$3) ON CONFLICT (menu_id) DO UPDATE SET label=EXCLUDED.label, updated_by=EXCLUDED.updated_by, updated_at=now()", [id,label,actor.id]);
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { client.release(); }
+  } else {
+    Object.entries(normalized).forEach(([id, label]) => memory.menuLabels.set(id, label));
+  }
+  await writeAudit(actor.id, "menu.labels.update", "portal_menu", "navigation", { labels: normalized }, ip);
+  return listMenuLabels();
 };
 
 const createUser = async (input, actor, ip) => {
@@ -228,6 +268,8 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { success: true }, { "set-cookie": cookieHeader("", true) });
     }
     if (url.pathname === "/api/auth/me" && req.method === "GET") return sendJson(res, 200, { user: publicUser(await requireUser(req)) });
+    if (url.pathname === "/api/menu" && req.method === "GET") { await requireUser(req); return sendJson(res, 200, { labels: await listMenuLabels() }); }
+    if (url.pathname === "/api/admin/menu" && req.method === "PATCH") { const actor = await requireUser(req, true); return sendJson(res, 200, { labels: await updateMenuLabels(await readBody(req), actor, requestIp(req)) }); }
     if (url.pathname === "/api/admin/users" && req.method === "GET") { await requireUser(req, true); return sendJson(res, 200, { users: await listUsers() }); }
     if (url.pathname === "/api/admin/users" && req.method === "POST") { const actor = await requireUser(req, true); return sendJson(res, 201, { user: await createUser(await readBody(req), actor, requestIp(req)) }); }
     const userMatch = url.pathname.match(/^\/api\/admin\/users\/([0-9a-f-]+)$/i);
