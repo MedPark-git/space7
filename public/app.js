@@ -25,9 +25,12 @@ const loginModal = $("#loginModal");
 const loginForm = $("#loginForm");
 const pageContent = $("#pageContent");
 const searchDialog = $("#searchDialog");
+const employeeDialog = $("#employeeDialog");
 let currentPage = "dashboard";
 let carouselMode = "calendar";
 let carouselTimer;
+let currentUser = null;
+let employeeCache = [];
 
 const showToast = (message) => {
   const toast = $("#toast");
@@ -40,7 +43,7 @@ const showToast = (message) => {
 const openLogin = () => {
   loginModal.classList.add("open");
   loginModal.setAttribute("aria-hidden", "false");
-  setTimeout(() => $("#email").focus(), 180);
+  setTimeout(() => $("#username").focus(), 180);
 };
 
 const closeLogin = () => {
@@ -69,10 +72,11 @@ loginForm.addEventListener("submit", async (event) => {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: $("#email").value, password: $("#password").value })
+      body: JSON.stringify({ username: $("#username").value, password: $("#password").value })
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message);
+    currentUser = result.user;
     sessionStorage.setItem("medpark-preview-session", JSON.stringify(result.user));
     await new Promise((resolve) => setTimeout(resolve, 350));
     closeLogin();
@@ -85,19 +89,21 @@ loginForm.addEventListener("submit", async (event) => {
   }
 });
 
-$("#logout").addEventListener("click", () => {
+$("#logout").addEventListener("click", async () => {
+  await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
   sessionStorage.removeItem("medpark-preview-session");
+  currentUser = null;
   clearInterval(carouselTimer);
   appView.hidden = true;
   guestView.hidden = false;
   loginForm.reset();
-  $("#email").value = "admin@medpark.co.kr";
+  $("#username").value = "admin";
   $("#password").value = "Preview123!";
   showToast("안전하게 로그아웃되었습니다.");
 });
 
 const renderNavigation = () => {
-  $("#mainNav").innerHTML = menuGroups.map((group) => `
+  $("#mainNav").innerHTML = menuGroups.filter((group) => group.label !== "ADMIN" || currentUser?.role === "admin").map((group) => `
     <section class="nav-section">
       <div class="nav-heading">${group.label}</div>
       ${group.items.map((item) => `
@@ -193,7 +199,7 @@ const startCarousel = () => {
 
 const renderDashboard = () => {
   pageContent.innerHTML = `
-    <section class="page-heading"><div><span class="eyebrow">OVERVIEW</span><h1>안녕하세요, 김관리님</h1><p>오늘의 주요 일정과 사업 현황을 한눈에 확인하세요.</p></div><span class="live-status"><i></i> 시스템 정상 운영 중</span></section>
+    <section class="page-heading"><div><span class="eyebrow">OVERVIEW</span><h1>안녕하세요, ${currentUser?.name || "임직원"}님</h1><p>오늘의 주요 일정과 사업 현황을 한눈에 확인하세요.</p></div><span class="live-status"><i></i> 시스템 정상 운영 중</span></section>
     <section class="metric-grid">
       <article class="metric-card"><div class="metric-label"><span>오늘의 일정</span><i class="metric-icon">□</i></div><strong>3</strong><small>건 예정</small></article>
       <article class="metric-card"><div class="metric-label"><span>진행 프로젝트</span><i class="metric-icon">◎</i></div><strong>33</strong><small>건 진행</small></article>
@@ -219,26 +225,19 @@ const renderDashboard = () => {
   $$('[data-quick]').forEach((button) => button.addEventListener("click", () => showToast(`${button.dataset.quick} URL은 포털 관리에서 등록합니다.`)));
 };
 
-const employees = [
-  ["M001", "김관리", "admin@medpark.co.kr", "경영지원본부", "관리자", "활성"],
-  ["M014", "박영업", "sales@medpark.co.kr", "마케팅사업본부", "기본", "활성"],
-  ["M027", "이기술", "tech@medpark.co.kr", "기술사업본부", "기본", "활성"],
-  ["M031", "최지원", "support@medpark.co.kr", "경영지원본부", "기본", "비활성"]
-];
-
 const renderAdmin = () => {
   pageContent.innerHTML = `
     <section class="page-heading"><div><span class="eyebrow">ADMINISTRATION</span><h1>포털 관리</h1><p>임직원, 메뉴와 접근 권한을 코드 수정 없이 관리합니다.</p></div><button id="addEmployee" class="button primary">＋ 임직원 등록</button></section>
     <section class="content-panel"><div class="admin-tabs"><button class="active">임직원 관리</button><button>메뉴 관리</button><button>권한 관리</button><button>감사 로그</button></div>
-      <div class="toolbar"><input id="employeeSearch" placeholder="이름, 이메일, 사번 검색" /><span class="live-status"><i></i> 활성 임직원 3명</span></div>
-      <table class="data-table"><thead><tr><th>사번</th><th>이름</th><th>이메일</th><th>소속</th><th>권한</th><th>상태</th><th></th></tr></thead><tbody id="employeeRows"></tbody></table>
+      <div class="toolbar"><input id="employeeSearch" placeholder="계정 ID, 이름, 사번, 부서 검색" /><span class="live-status"><i></i> 활성 임직원 <b id="activeCount">-</b>명</span></div>
+      <table class="data-table"><thead><tr><th>계정 ID</th><th>성명</th><th>사번</th><th>소속</th><th>권한</th><th>상태</th><th>관리</th></tr></thead><tbody id="employeeRows"><tr><td colspan="7">계정 정보를 불러오는 중입니다.</td></tr></tbody></table>
     </section>`;
-  renderEmployees(employees);
+  loadEmployees();
   $("#employeeSearch").addEventListener("input", (event) => {
     const q = event.target.value.toLowerCase();
-    renderEmployees(employees.filter((row) => row.join(" ").toLowerCase().includes(q)));
+    renderEmployees(employeeCache.filter((user) => Object.values(user).join(" ").toLowerCase().includes(q)));
   });
-  $("#addEmployee").addEventListener("click", () => showToast("임직원 등록 폼은 2차 개발에서 DB와 연결됩니다."));
+  $("#addEmployee").addEventListener("click", () => { $("#employeeFormError").textContent = ""; employeeDialog.showModal(); });
   $$(".admin-tabs button").forEach((button) => button.addEventListener("click", () => {
     $$(".admin-tabs button").forEach((tab) => tab.classList.remove("active"));
     button.classList.add("active");
@@ -246,9 +245,62 @@ const renderAdmin = () => {
   }));
 };
 
-const renderEmployees = (rows) => {
-  $("#employeeRows").innerHTML = rows.map((row) => `<tr>${row.map((cell, index) => `<td>${index === 4 || index === 5 ? `<span class="tag ${cell === "비활성" ? "gray" : ""}">${cell}</span>` : cell}</td>`).join("")}<td>•••</td></tr>`).join("");
+const loadEmployees = async () => {
+  try {
+    const response = await fetch("/api/admin/users", { headers: { accept: "application/json" } });
+    if (response.status === 401 || response.status === 403) throw new Error("관리자 권한을 확인해 주세요.");
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    employeeCache = result.users;
+    renderEmployees(employeeCache);
+    $("#activeCount").textContent = employeeCache.filter((user) => user.status === "active").length;
+  } catch (error) {
+    $("#employeeRows").innerHTML = `<tr><td colspan="7">${escapeHtml(error.message || "계정 정보를 불러오지 못했습니다.")}</td></tr>`;
+  }
 };
+
+const renderEmployees = (rows) => {
+  $("#employeeRows").innerHTML = rows.map((user) => `<tr>
+    <td><b>${escapeHtml(user.username)}</b></td><td>${escapeHtml(user.name)}</td><td>${escapeHtml(user.employee_no || "-")}</td><td>${escapeHtml(user.department || "-")}</td>
+    <td><span class="tag">${user.role === "admin" ? "관리자" : "기본"}</span></td><td><span class="tag ${user.status !== "active" ? "gray" : ""}">${user.status === "active" ? "활성" : "비활성"}</span></td>
+    <td><div class="account-actions"><button data-toggle-user="${user.id}" data-next-status="${user.status === "active" ? "terminated" : "active"}">${user.status === "active" ? "비활성화" : "재활성화"}</button><button data-reset-user="${user.id}">비밀번호 초기화</button></div></td>
+  </tr>`).join("") || '<tr><td colspan="7">등록된 계정이 없습니다.</td></tr>';
+  $$('[data-toggle-user]').forEach((button) => button.addEventListener("click", async () => {
+    if (button.dataset.toggleUser === currentUser?.id && button.dataset.nextStatus === "terminated") return showToast("현재 로그인한 관리자 계정은 비활성화할 수 없습니다.");
+    await updateEmployee(button.dataset.toggleUser, { status: button.dataset.nextStatus });
+  }));
+  $$('[data-reset-user]').forEach((button) => button.addEventListener("click", async () => {
+    const password = prompt("새 초기 비밀번호를 입력하세요. (8자 이상)");
+    if (password) await updateEmployee(button.dataset.resetUser, { password });
+  }));
+};
+
+const updateEmployee = async (id, payload) => {
+  try {
+    const response = await fetch(`/api/admin/users/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    showToast("계정 정보가 변경되었습니다.");
+    await loadEmployees();
+  } catch (error) { showToast(error.message || "계정 변경에 실패했습니다."); }
+};
+
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
+
+$$('[data-close-employee]').forEach((button) => button.addEventListener("click", () => employeeDialog.close()));
+$("#employeeForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const payload = Object.fromEntries(new FormData(form));
+  $("#employeeFormError").textContent = "";
+  try {
+    const response = await fetch("/api/admin/users", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    form.reset(); employeeDialog.close(); showToast(`${result.user.username} 계정이 등록되었습니다.`);
+    await loadEmployees();
+  } catch (error) { $("#employeeFormError").textContent = error.message || "계정 등록에 실패했습니다."; }
+});
 
 const renderPlaceholder = (title, icon) => {
   pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">CONNECTED SYSTEM</span><h1>${title}</h1><p>외부 시스템 또는 API 연결을 준비하고 있습니다.</p></div></section><section class="content-panel"><div class="placeholder-state"><div><i>${icon === "calendar" ? "□" : icon === "meetings" ? "☷" : "↗"}</i><h2>${title} 연결 준비 중</h2><p>관리자가 실제 URL 또는 API 인증정보를 등록하면 이곳에서 바로 사용할 수 있습니다.</p><button class="button primary" style="margin-top:20px" id="configButton">연결 설정 보기</button></div></div></section>`;
@@ -282,12 +334,28 @@ const showApp = () => {
   appView.hidden = false;
   const now = new Date();
   $("#todayLabel").textContent = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" }).format(now);
+  $(".profile b").textContent = currentUser?.name || "임직원";
+  $(".profile small").textContent = `${currentUser?.department || "소속 미지정"} · ${currentUser?.role === "admin" ? "관리자" : "임직원"}`;
+  $(".profile .avatar").textContent = (currentUser?.name || "M").slice(0, 1);
   renderNavigation();
   navigate("dashboard");
 };
 
 setupSearch();
 if (location.protocol === "file:" && new URLSearchParams(location.search).get("mode") === "app") {
-  sessionStorage.setItem("medpark-preview-session", JSON.stringify({ name: "김관리", role: "admin" }));
+  currentUser = { name: "김관리", role: "admin", department: "경영지원본부" };
+  sessionStorage.setItem("medpark-preview-session", JSON.stringify(currentUser));
+  showApp();
+} else {
+  fetch("/api/auth/me", { headers: { accept: "application/json" } }).then(async (response) => {
+    if (!response.ok) throw new Error("no-session");
+    const result = await response.json();
+    currentUser = result.user;
+    sessionStorage.setItem("medpark-preview-session", JSON.stringify(result.user));
+    showApp();
+  }).catch(() => {
+    sessionStorage.removeItem("medpark-preview-session");
+    guestView.hidden = false;
+    appView.hidden = true;
+  });
 }
-if (sessionStorage.getItem("medpark-preview-session")) showApp();
