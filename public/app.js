@@ -126,7 +126,9 @@ const renderNavigation = () => {
         <button class="nav-item ${item.id === currentPage ? "active" : ""}" data-nav="${item.id}" data-has-children="${Boolean(item.children)}">
           <span class="nav-icon">${item.icon}</span><span>${item.title}</span>${item.children ? '<span class="chevron">›</span>' : ""}
         </button>
-        ${item.children ? `<div class="submenu" data-submenu="${item.id}"><div>${item.children.map((child) => `<button data-external="${escapeHtml(child.title)}"${child.url ? ` data-url="${escapeHtml(child.url)}"` : ""}>${escapeHtml(child.title)}<span style="float:right">${child.url ? "↗" : "·"}</span></button>`).join("")}</div></div>` : ""}
+        ${item.children ? `<div class="submenu" data-submenu="${item.id}"><div>${item.children.map((child) => child.url
+          ? `<a data-external="${escapeHtml(child.title)}" data-url="${escapeHtml(child.url)}" href="${escapeHtml(child.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(child.title)}<span style="float:right">↗</span></a>`
+          : `<button data-external="${escapeHtml(child.title)}">${escapeHtml(child.title)}<span style="float:right">·</span></button>`).join("")}</div></div>` : ""}
       `).join("")}
     </section>
   `).join("");
@@ -140,10 +142,7 @@ const renderNavigation = () => {
     }
     navigate(id);
   }));
-  $$('[data-external]').forEach((button) => button.addEventListener("click", () => {
-    if (button.dataset.url) window.open(button.dataset.url, "_blank", "noopener,noreferrer");
-    else showToast(`${button.dataset.external} 링크는 추후 연결할 예정입니다.`);
-  }));
+  $$('button[data-external]').forEach((button) => button.addEventListener("click", () => showToast(`${button.dataset.external} 링크는 추후 연결할 예정입니다.`)));
 };
 
 const navigate = (page) => {
