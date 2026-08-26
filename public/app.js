@@ -695,7 +695,7 @@ const renderEmployees = (rows) => {
   if (!$("#employeeRows")) return;
   $("#employeeRows").innerHTML = rows.map((user) => `<tr>
     <td><b>${escapeHtml(user.username)}</b></td><td>${escapeHtml(user.name)}</td><td>${escapeHtml(user.employee_no || "-")}</td><td>${escapeHtml(user.department || "-")}</td>
-    <td><span class="tag">${user.role === "admin" ? "관리자" : "기본"}</span></td><td><span class="tag ${user.status !== "active" ? "gray" : ""}">${user.status === "active" ? "활성" : "비활성"}</span></td>
+    <td><span class="tag">${user.role === "admin" ? "관리자" : "기본(임직원)"}</span></td><td><span class="tag ${user.status !== "active" ? "gray" : ""}">${user.status === "active" ? "활성" : "비활성"}</span></td>
     <td><div class="account-actions"><button data-edit-user="${user.id}">정보 수정</button><button data-toggle-user="${user.id}" data-next-status="${user.status === "active" ? "terminated" : "active"}">${user.status === "active" ? "비활성화" : "재활성화"}</button><button data-reset-user="${user.id}">비밀번호 초기화</button></div></td>
   </tr>`).join("") || '<tr><td colspan="7">등록된 계정이 없습니다.</td></tr>';
   $$('[data-edit-user]').forEach((button) => button.addEventListener("click", () => openEditEmployee(button.dataset.editUser)));

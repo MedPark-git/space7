@@ -4,6 +4,16 @@ import { readFile } from "node:fs/promises";
 
 const root = new URL("..", import.meta.url);
 
+test("임직원 권한 선택과 목록 표시는 기본(임직원)·관리자로 통일된다", async () => {
+  const [html, app] = await Promise.all([
+    readFile(new URL("public/index.html", root), "utf8"),
+    readFile(new URL("public/app.js", root), "utf8")
+  ]);
+  assert.match(html, /<option value="basic">기본\(임직원\)<\/option><option value="admin">관리자<\/option>/);
+  assert.doesNotMatch(html, /\[REDACTED\]/);
+  assert.match(app, /user\.role === "admin" \? "관리자" : "기본\(임직원\)"/);
+});
+
 test("화면에서 사용하는 내부 API와 Google Calendar 연동 경로가 배포 소스에 모두 존재한다", async () => {
   const [app, server] = await Promise.all([
     readFile(new URL("public/app.js", root), "utf8"),
