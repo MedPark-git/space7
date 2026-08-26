@@ -127,7 +127,7 @@
 
     <dialog id="employeeDialog" class="employee-dialog">
       <form id="employeeForm" method="dialog">
-        <header><div><span class="eyebrow">ADMIN ONLY</span><h2>임직원 계정 등록</h2><p>로그인에 사용할 계정 ID와 초기 정보를 입력합니다.</p></div><button type="button" data-close-employee aria-label="닫기">×</button></header>
+        <header><div><span class="eyebrow">ADMIN ONLY</span><h2 id="employeeDialogTitle">임직원 계정 등록</h2><p id="employeeDialogDescription">로그인에 사용할 계정 ID와 초기 정보를 입력합니다.</p></div><button type="button" data-close-employee aria-label="닫기">×</button></header>
         <div class="employee-form-grid">
           <label>계정 ID<input name="username" pattern="[A-Za-z0-9._-]{4,30}" placeholder="영문·숫자 4~30자" required /></label>
           <label>성명<input name="name" placeholder="홍길동" required /></label>
@@ -135,13 +135,13 @@
           <label>부서<input name="department" placeholder="경영지원본부" /></label>
           <label>이메일(선택)<input name="email" type="email" placeholder="name@company.com" /></label>
           <label>권한<select name="role"><option value="basic">기본(임직원)</option><option value="admin">관리자</option></select></label>
-          <label class="full-field">초기 비밀번호<input name="password" type="password" minlength="8" placeholder="8자 이상" required /></label>
+          <label id="employeePasswordField" class="full-field">초기 비밀번호<input name="password" type="password" minlength="8" placeholder="8자 이상" required /></label>
         </div>
         <p id="employeeFormError" class="form-error"></p>
-        <footer><button type="button" class="button secondary" data-close-employee>취소</button><button type="submit" class="button primary">계정 등록</button></footer>
+        <footer><button type="button" class="button secondary" data-close-employee>취소</button><button id="employeeSubmitButton" type="submit" class="button primary">계정 등록</button></footer>
       </form>
     </dialog>
 
-    <script src="./app.js?v=20260826-2" type="module"></script>
+    <script src="./app.js?v=20260826-3" type="module"></script>
   </body>
 </html>
