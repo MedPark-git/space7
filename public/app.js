@@ -43,6 +43,7 @@ const quickLinksDialog = $("#quickLinksDialog");
 let currentPage = "dashboard";
 let carouselMode = "calendar";
 let carouselTimer;
+let carouselPaused = false;
 let currentUser = null;
 let calendarMonth = new Date();
 let selectedCalendarDateKey = null;
@@ -453,10 +454,32 @@ const renderCarousel = () => {
 
 const startCarousel = () => {
   clearInterval(carouselTimer);
+  carouselTimer = null;
+  if (carouselPaused || currentPage !== "dashboard") return;
+  const progress = $("#carouselProgress");
+  if (progress) progress.innerHTML = "<i></i>";
   carouselTimer = setInterval(() => {
     carouselMode = carouselModes[(carouselModes.indexOf(carouselMode) + 1) % carouselModes.length];
     renderCarousel();
   }, 30000);
+};
+
+const setCarouselPaused = (paused) => {
+  if (currentPage !== "dashboard") return;
+  carouselPaused = paused;
+  const panel = $(".main-carousel-panel");
+  panel?.classList.toggle("carousel-paused", paused);
+  if (paused) {
+    clearInterval(carouselTimer);
+    carouselTimer = null;
+  } else startCarousel();
+};
+
+const bindCarouselPause = () => {
+  const panel = $(".main-carousel-panel");
+  if (!panel) return;
+  panel.addEventListener("mouseenter", () => setCarouselPaused(true));
+  panel.addEventListener("mouseleave", () => setCarouselPaused(false));
 };
 
 const renderQuickLinks = () => {
@@ -475,6 +498,7 @@ const openQuickLinksEditor = () => {
 const renderDashboard = () => {
   resetCalendarToToday();
   carouselMode = "calendar";
+  carouselPaused = false;
   pageContent.innerHTML = `
     <section class="page-heading"><div><span class="eyebrow">OVERVIEW</span><h1>안녕하세요, ${currentUser?.name || "임직원"}님</h1><p>주요 일정과 국내·해외 사업 현황을 한눈에 확인하세요.</p></div><span class="live-status"><i></i> 시스템 정상 운영 중</span></section>
     <section class="dashboard-top-grid">
@@ -491,6 +515,7 @@ const renderDashboard = () => {
   renderQuickLinks();
   $("#editQuickLinks").addEventListener("click", openQuickLinksEditor);
   renderCarousel();
+  bindCarouselPause();
   startCarousel();
 };
 
