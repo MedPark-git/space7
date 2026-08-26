@@ -21,10 +21,10 @@ const menuGroups = [
   ]},
   { label: "COLLABORATION", items: [
     { id: "amarans", icon: "A", title: "아마란스" },
-    { id: "meetings", icon: "☷", title: "회의록" },
-    { id: "calendar", icon: "□", title: "일정(캘린더)" }
+    { id: "meetings", icon: "☷", title: "회의록" }
   ]},
   { label: "ADMIN", items: [
+    { id: "calendar", icon: "□", title: "일정(캘린더)" },
     { id: "admin", icon: "⚙", title: "포털 관리" }
   ]}
 ];
@@ -125,6 +125,19 @@ $("#resetLink").addEventListener("click", (event) => {
   showToast("운영 버전에서 관리자에게 재설정을 요청할 수 있습니다.");
 });
 
+const enforceEnglishLoginInput = (input, allowedPattern) => {
+  const clean = () => {
+    const next = [...input.value].filter((character) => allowedPattern.test(character)).join("");
+    if (next === input.value) return;
+    input.value = next;
+    $("#loginError").textContent = "계정 ID와 비밀번호는 영문 자판으로 입력해 주세요.";
+  };
+  input.addEventListener("input", clean);
+  input.addEventListener("compositionend", clean);
+};
+enforceEnglishLoginInput($("#username"), /^[A-Za-z0-9._-]$/);
+enforceEnglishLoginInput($("#password"), /^[\x20-\x7E]$/);
+
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   loginForm.classList.add("is-loading");
@@ -133,6 +146,8 @@ loginForm.addEventListener("submit", async (event) => {
     const usernameInput = $("#username") || $("#email");
     const passwordInput = $("#password");
     if (!usernameInput || !passwordInput) throw new Error("로그인 화면이 갱신되었습니다. 페이지를 새로고침해 주세요.");
+    if (!/^[A-Za-z0-9._-]{4,30}$/.test(usernameInput.value.trim())) throw new Error("계정 ID는 영문자·숫자·점·밑줄·하이픈으로 입력해 주세요.");
+    if (!/^[\x20-\x7E]+$/.test(passwordInput.value)) throw new Error("비밀번호는 영문 자판으로 입력해 주세요.");
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -196,6 +211,10 @@ const renderNavigation = () => {
 };
 
 const navigate = (page) => {
+  if ((page === "admin" || page === "calendar") && currentUser?.role !== "admin") {
+    page = "dashboard";
+    showToast("관리자 전용 메뉴입니다.");
+  }
   currentPage = page;
   clearInterval(carouselTimer);
   pageContent.classList.toggle("dashboard-page", page === "dashboard");
@@ -680,7 +699,8 @@ $("#sidebarBackdrop").addEventListener("click", closeSidebar);
 
 const setupSearch = () => {
   const draw = (query = "") => {
-    const allItems = menuGroups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.label })));
+    const visibleGroups = menuGroups.filter((group) => group.label !== "ADMIN" || currentUser?.role === "admin");
+    const allItems = visibleGroups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.label })));
     const items = allItems.filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
     $("#searchResults").innerHTML = items.map((item) => `<button type="button" class="search-result" data-search-page="${item.id}"><b>${item.icon} &nbsp; ${item.title}</b><span>${item.group}</span></button>`).join("") || '<div style="padding:30px;text-align:center;color:#8a9693;font-size:11px">검색 결과가 없습니다.</div>';
     $$('[data-search-page]').forEach((button) => button.addEventListener("click", () => { searchDialog.close(); navigate(button.dataset.searchPage); }));
