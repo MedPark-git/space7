@@ -8,6 +8,7 @@ from werkzeug.middleware.dispatcher import DispatcherMiddleware
 import calendar_service as calendars
 import portal_core as core
 import ar_migration
+import portal_migration
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
@@ -218,6 +219,28 @@ def ar_import():
     except ar_migration.MigrationError as error:
         return json_response({"message": str(error)}, 422)
     return json_response(result)
+
+
+@portal.post("/api/admin/migrations/portal/import")
+def portal_import():
+    if not portal_migration.migration_enabled():
+        return json_response({"message": "이관 경로가 비활성화되어 있습니다."}, 404)
+    if not portal_migration.authorize(request.headers.get("Authorization")):
+        return json_response({"message": "이관 인증에 실패했습니다."}, 401)
+    try:
+        result = portal_migration.import_snapshot(payload())
+    except portal_migration.MigrationError as error:
+        return json_response({"message": str(error)}, 422)
+    return json_response(result)
+
+
+@portal.get("/api/admin/migrations/portal/status")
+def portal_import_status():
+    if not portal_migration.migration_enabled():
+        return json_response({"message": "이관 경로가 비활성화되어 있습니다."}, 404)
+    if not portal_migration.authorize(request.headers.get("Authorization")):
+        return json_response({"message": "이관 인증에 실패했습니다."}, 401)
+    return json_response({"tables": portal_migration.database_state()})
 
 
 @portal.get("/api/admin/migrations/ar/status")
