@@ -26,7 +26,6 @@ const menuGroups = [
   ]},
   { id: "admin", label: "ADMIN", items: [
     { id: "admin", icon: "⚙", title: "포털 관리" },
-    { id: "calendar_admin", icon: "□", title: "일정(캘린더)_관리자" }
   ]}
 ];
 
@@ -60,7 +59,7 @@ const builtInEditableMenuIds = new Set([
   "group_workspace", "group_business", "group_collaboration",
   "management", "management_ar", "management_hr", "management_routine",
   "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
-  "technology", "technology_focus", "amarans", "meetings", "calendar", "calendar_admin"
+  "technology", "technology_focus", "amarans", "meetings", "calendar"
 ]);
 const editableTopMenuItems = () => menuGroups.flatMap((group) => group.items).filter((item) => item.id !== "dashboard" && item.id !== "admin");
 const editableMenuItems = () => editableTopMenuItems().flatMap((item) => [item, ...(item.children || [])]);
@@ -242,7 +241,7 @@ const renderNavigation = () => {
 };
 
 const navigate = (page) => {
-  if (["admin", "calendar_admin"].includes(page) && currentUser?.role !== "admin") {
+  if (page === "admin" && currentUser?.role !== "admin") {
     page = "dashboard";
     showToast("관리자 전용 메뉴입니다.");
   }
@@ -257,7 +256,6 @@ const navigate = (page) => {
   if (page === "dashboard") renderDashboard();
   else if (page === "admin") renderAdmin();
   else if (page === "calendar") renderCalendarPage();
-  else if (page === "calendar_admin") renderCalendarSettings();
   else renderPlaceholder(title, page);
   closeSidebar();
 };

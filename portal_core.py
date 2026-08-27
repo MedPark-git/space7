@@ -24,7 +24,7 @@ EDITABLE_MENU_IDS = {
     "group_workspace", "group_business", "group_collaboration",
     "management", "management_ar", "management_hr", "management_routine",
     "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
-    "technology", "technology_focus", "amarans", "meetings", "calendar", "calendar_admin",
+    "technology", "technology_focus", "amarans", "meetings", "calendar",
 }
 MENU_GROUP_IDS = ["workspace", "business", "collaboration"]
 BUILTIN_MEMBERSHIP = {
@@ -37,7 +37,7 @@ BUILTIN_MEMBERSHIP = {
     "technology": ["technology_focus"],
 }
 QUICK_LINKS = {
-    "ar": {"id": "ar", "label": "미수채권", "icon": "₩", "url": "/tf/ar/"},
+    "ar": {"id": "ar", "label": "미수채권", "icon": "₩", "url": "https://medprk-ar-dashboard.mycafe24.ai/"},
     "hr": {"id": "hr", "label": "HR", "icon": "♙", "url": "https://medprk-medpark-hr-maps.mycafe24.ai/"},
     "allo": {"id": "allo", "label": "MedPark-Allo", "icon": "◫", "url": "https://medprk-medpark-allo.mycafe24.ai/"},
     "global": {"id": "global", "label": "Global-MAPS", "icon": "◎", "url": "https://medprk-medpark-global-maps.mycafe24.ai/"},
@@ -47,7 +47,7 @@ DEFAULT_QUICK_LINKS = ["ar", "hr", "allo", "global"]
 
 _memory = {
     "users": {}, "sessions": {}, "audit": [], "labels": {}, "order": {},
-    "custom": {}, "quick": {}, "calendar": None, "calendars": {},
+    "custom": {}, "quick": {},
 }
 
 
@@ -214,20 +214,6 @@ CREATE TABLE IF NOT EXISTS user_quick_links (
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE, system_id varchar(30) NOT NULL,
   position integer NOT NULL, updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (user_id, system_id)
 );
-CREATE TABLE IF NOT EXISTS calendar_integration_settings (
-  id smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1), mode varchar(20) NOT NULL, calendar_id varchar(255) NOT NULL,
-  api_key_encrypted text, oauth_client_id text, oauth_client_secret_encrypted text, access_token_encrypted text,
-  refresh_token_encrypted text, token_expiry timestamptz, oauth_state_hash char(64), oauth_state_expiry timestamptz,
-  updated_by uuid REFERENCES users(id) ON DELETE SET NULL, updated_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE TABLE IF NOT EXISTS calendar_integration_calendars (
-  calendar_id varchar(255) PRIMARY KEY, summary varchar(255) NOT NULL, background_color varchar(20),
-  foreground_color varchar(20), primary_calendar boolean NOT NULL DEFAULT false, access_role varchar(30),
-  item_order integer NOT NULL DEFAULT 0, updated_by uuid REFERENCES users(id) ON DELETE SET NULL,
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-ALTER TABLE calendar_integration_calendars ADD COLUMN IF NOT EXISTS foreground_color varchar(20);
-CREATE SCHEMA IF NOT EXISTS ar;
 """
 
 
@@ -241,7 +227,6 @@ def init_database():
                     "group_workspace": "WORKSPACE", "group_business": "BUSINESS", "group_collaboration": "COLLABORATION",
                     "management": "경영사업본부", "marketing": "마케팅 사업본부", "technology": "기술사업본부",
                     "amarans": "아마란스", "meetings": "회의록", "calendar": "일정(캘린더)",
-                    "calendar_admin": "일정(캘린더)_관리자",
                 }
                 for menu_id, label in labels.items():
                     cur.execute("INSERT INTO portal_menu_labels(menu_id,label) VALUES(%s,%s) ON CONFLICT(menu_id) DO NOTHING", (menu_id, label))
@@ -254,14 +239,6 @@ def init_database():
                         "INSERT INTO users(id,username,email,password_hash,name,employee_no,department,role,status) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                         (str(uuid.uuid4()), "admin", None, hash_password(password), "관리자", "M001", "경영사업본부", "admin", "active"),
                     )
-                cur.execute("INSERT INTO portal_app_migrations(id) VALUES(%s) ON CONFLICT DO NOTHING RETURNING id", ("20260827_tf_ar_v1",))
-                if cur.fetchone():
-                    cur.execute("SELECT id FROM users WHERE role='admin' AND status='active' ORDER BY created_at LIMIT 1")
-                    admin_id = cur.fetchone()[0]
-                    tf_id = str(uuid.uuid4())
-                    ar_id = str(uuid.uuid4())
-                    cur.execute("INSERT INTO portal_custom_menu_items(id,parent_id,label,icon,url,item_order,created_by) VALUES(%s,'collaboration','TF','T',NULL,99,%s)", (tf_id, admin_id))
-                    cur.execute("INSERT INTO portal_custom_menu_items(id,parent_id,label,icon,url,item_order,created_by) VALUES(%s,%s,'미수채권 관리','₩','/tf/ar/',0,%s)", (ar_id, tf_id, admin_id))
     else:
         password = os.environ.get("INITIAL_ADMIN_PASSWORD", "LocalTestOnly!234")
         user_id = str(uuid.uuid4())
@@ -270,9 +247,6 @@ def init_database():
             "name": "관리자", "employee_no": "M001", "department": "경영사업본부",
             "role": "admin", "status": "active", "created_at": datetime.now(timezone.utc),
         }
-        tf_id, ar_id = str(uuid.uuid4()), str(uuid.uuid4())
-        _memory["custom"][tf_id] = {"id": tf_id, "parent_id": "collaboration", "label": "TF", "icon": "T", "url": None, "item_order": 99}
-        _memory["custom"][ar_id] = {"id": ar_id, "parent_id": tf_id, "label": "미수채권 관리", "icon": "₩", "url": "/tf/ar/", "item_order": 0}
 
 
 def find_user_by_username(username):

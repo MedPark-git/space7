@@ -2,20 +2,15 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, make_response, redirect, request, send_from_directory
-from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from flask import Flask, jsonify, make_response, request, send_from_directory
+from werkzeug.exceptions import HTTPException
 
-import calendar_service as calendars
 import portal_core as core
-import ar_migration
-import portal_migration
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
 
 core.init_database()
-
-from ar_module.app import app as receivables_app  # schema exists before import
 
 portal = Flask(__name__, static_folder=None)
 portal.json.ensure_ascii = False
@@ -52,6 +47,8 @@ def handle_app_error(error):
 
 @portal.errorhandler(Exception)
 def handle_error(error):
+    if isinstance(error, HTTPException):
+        return json_response({"message": error.description}, error.code or 500)
     code = getattr(error, "pgcode", None)
     if code == "23505":
         return json_response({"message": "이미 사용 중인 계정 ID 또는 사번입니다."}, 409)
@@ -63,7 +60,7 @@ def handle_error(error):
 
 @portal.get("/api/health")
 def health():
-    return jsonify(status="ok", database="postgresql" if core.DB_ENABLED else "memory", runtime="python-flask", receivables_mount="/tf/ar/")
+    return jsonify(status="ok", database="postgresql" if core.DB_ENABLED else "memory", runtime="python-flask")
 
 
 @portal.post("/api/auth/login")
@@ -149,107 +146,13 @@ def users_patch(user_id):
 @portal.get("/api/calendar/events")
 def calendar_events():
     current_user()
-    return json_response(calendars.calendar_events(request.args.get("month")))
-
-
-@portal.get("/api/admin/calendar/settings")
-def calendar_settings_get():
-    current_user(True)
-    return json_response(calendars.public_settings(calendars.settings_row()))
-
-
-@portal.put("/api/admin/calendar/settings")
-def calendar_settings_put():
-    actor = current_user(True)
-    return json_response(calendars.save_settings(payload(), actor, request_ip()))
-
-
-@portal.get("/api/admin/calendar/calendars")
-def calendar_list_get():
-    current_user(True)
-    return json_response(calendars.list_available())
-
-
-@portal.put("/api/admin/calendar/calendars")
-def calendar_list_put():
-    actor = current_user(True)
-    return json_response(calendars.save_selected(payload(), actor, request_ip()))
-
-
-@portal.post("/api/admin/calendar/test")
-def calendar_test():
-    current_user(True)
-    result = calendars.calendar_events(request.args.get("month"))
-    count = result.get("calendar_count", 1)
-    warnings = len(result.get("warnings") or [])
-    message = result.get("message") or f"{count}개 캘린더에서 {len(result.get('events') or [])}개의 일정을 확인했습니다."
-    if warnings:
-        message += f" ({warnings}개 캘린더 조회 실패)"
-    return json_response({"success": bool(result.get("connected")), "event_count": len(result.get("events") or []), "calendar_count": count, "warning_count": warnings, "message": message})
-
-
-@portal.post("/api/admin/calendar/oauth/start")
-def calendar_oauth_start():
-    actor = current_user(True)
-    return json_response(calendars.start_oauth(actor, request_ip()))
-
-
-@portal.get("/api/calendar/oauth/callback")
-def calendar_oauth_callback():
-    if request.args.get("error"):
-        return redirect("/?calendar=denied")
-    calendars.exchange_code(request.args.get("code"), request.args.get("state"))
-    return redirect("/?calendar=connected")
-
-
-@portal.post("/api/webhooks/plaud")
-def plaud_webhook():
-    payload()
-    return json_response({"accepted": True, "preview": True}, 202)
-
-
-@portal.post("/api/admin/migrations/ar/import")
-def ar_import():
-    if not ar_migration.migration_enabled():
-        return json_response({"message": "이관 경로가 비활성화되어 있습니다."}, 404)
-    if not ar_migration.authorize(request.headers.get("Authorization")):
-        return json_response({"message": "이관 인증에 실패했습니다."}, 401)
-    try:
-        result = ar_migration.import_snapshot(payload())
-    except ar_migration.MigrationError as error:
-        return json_response({"message": str(error)}, 422)
-    return json_response(result)
-
-
-@portal.post("/api/admin/migrations/portal/import")
-def portal_import():
-    if not portal_migration.migration_enabled():
-        return json_response({"message": "이관 경로가 비활성화되어 있습니다."}, 404)
-    if not portal_migration.authorize(request.headers.get("Authorization")):
-        return json_response({"message": "이관 인증에 실패했습니다."}, 401)
-    try:
-        result = portal_migration.import_snapshot(payload())
-    except portal_migration.MigrationError as error:
-        return json_response({"message": str(error)}, 422)
-    return json_response(result)
-
-
-@portal.get("/api/admin/migrations/portal/status")
-def portal_import_status():
-    if not portal_migration.migration_enabled():
-        return json_response({"message": "이관 경로가 비활성화되어 있습니다."}, 404)
-    if not portal_migration.authorize(request.headers.get("Authorization")):
-        return json_response({"message": "이관 인증에 실패했습니다."}, 401)
-    return json_response({"tables": portal_migration.database_state()})
-
-
-@portal.get("/api/admin/migrations/ar/status")
-def ar_import_status():
-    if not ar_migration.migration_enabled():
-        return json_response({"message": "이관 경로가 비활성화되어 있습니다."}, 404)
-    if not ar_migration.authorize(request.headers.get("Authorization")):
-        return json_response({"message": "이관 인증에 실패했습니다."}, 401)
-    return json_response({"tables": ar_migration.database_state()})
+    return json_response({
+        "connected": False,
+        "calendar_count": 0,
+        "events": [],
+        "warnings": [],
+        "message": "캘린더 API 연동은 추후 적용될 예정입니다.",
+    })
 
 
 @portal.get("/")
@@ -271,7 +174,7 @@ def public_file(path):
     return response
 
 
-app = DispatcherMiddleware(portal, {"/tf/ar": receivables_app})
+app = portal
 
 
 if __name__ == "__main__":

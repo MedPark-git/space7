@@ -1,1 +1,0 @@
-"""Mounted MedPark receivables application."""
