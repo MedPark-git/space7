@@ -32,6 +32,10 @@ const menuGroups = [
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+const isInternalUrl = (url) => typeof url === "string" && url.startsWith("/") && !url.startsWith("//");
+const linkAttributes = (url) => isInternalUrl(url) ? "" : ' target="_blank" rel="noopener noreferrer"';
+const linkIndicator = (url) => isInternalUrl(url) ? "→" : "↗";
+const linkLocation = (url) => isInternalUrl(url) ? "MedPark One 내부" : new URL(url).hostname;
 const guestView = $("#guestView");
 const appView = $("#appView");
 const loginModal = $("#loginModal");
@@ -204,8 +208,6 @@ $("#logout").addEventListener("click", async () => {
   appView.hidden = true;
   guestView.hidden = false;
   loginForm.reset();
-  $("#username").value = "admin";
-  $("#password").value = "Preview123!";
   showToast("안전하게 로그아웃되었습니다.");
 });
 
@@ -215,13 +217,13 @@ const renderNavigation = () => {
       <div class="nav-heading">${group.label}</div>
       ${group.items.map((item) => {
         const hasChildren = Boolean(item.children?.length);
-        if (item.url && !hasChildren) return `<a class="nav-item" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><span class="nav-icon">${escapeHtml(item.icon || "◇")}</span><span>${escapeHtml(item.title)}</span><span class="chevron">↗</span></a>`;
+        if (item.url && !hasChildren) return `<a class="nav-item" href="${escapeHtml(item.url)}"${linkAttributes(item.url)}><span class="nav-icon">${escapeHtml(item.icon || "◇")}</span><span>${escapeHtml(item.title)}</span><span class="chevron">${linkIndicator(item.url)}</span></a>`;
         return `
         <button class="nav-item ${item.id === currentPage ? "active" : ""}" data-nav="${escapeHtml(item.id)}" data-has-children="${hasChildren}">
           <span class="nav-icon">${escapeHtml(item.icon || "◇")}</span><span>${escapeHtml(item.title)}</span>${hasChildren ? '<span class="chevron">›</span>' : ""}
         </button>
         ${hasChildren ? `<div class="submenu" data-submenu="${escapeHtml(item.id)}"><div>${item.children.map((child) => child.url
-          ? `<a data-external="${escapeHtml(child.title)}" data-url="${escapeHtml(child.url)}" href="${escapeHtml(child.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(child.title)}<span style="float:right">↗</span></a>`
+          ? `<a data-external="${escapeHtml(child.title)}" data-url="${escapeHtml(child.url)}" href="${escapeHtml(child.url)}"${linkAttributes(child.url)}>${escapeHtml(child.title)}<span style="float:right">${linkIndicator(child.url)}</span></a>`
           : `<button data-external="${escapeHtml(child.title)}">${escapeHtml(child.title)}<span style="float:right">·</span></button>`).join("")}</div></div>` : ""}
       `}).join("")}
     </section>
@@ -486,12 +488,12 @@ const bindCarouselPause = () => {
 const renderQuickLinks = () => {
   const list = $("#quickLinksList");
   if (!list) return;
-  list.innerHTML = quickLinks.map((link) => `<a class="quick-link-compact" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer"><i>${escapeHtml(link.icon)}</i><span>${escapeHtml(link.label)}</span><b>↗</b></a>`).join("") || '<p class="quick-empty">선택한 시스템이 없습니다.</p>';
+  list.innerHTML = quickLinks.map((link) => `<a class="quick-link-compact" href="${escapeHtml(link.url)}"${linkAttributes(link.url)}><i>${escapeHtml(link.icon)}</i><span>${escapeHtml(link.label)}</span><b>${linkIndicator(link.url)}</b></a>`).join("") || '<p class="quick-empty">선택한 시스템이 없습니다.</p>';
 };
 
 const openQuickLinksEditor = () => {
   const selected = new Set(quickLinks.map((link) => link.id));
-  $("#quickLinksOptions").innerHTML = quickLinkCatalog.map((link) => `<label><input type="checkbox" name="system_id" value="${escapeHtml(link.id)}" ${selected.has(link.id) ? "checked" : ""} /><i>${escapeHtml(link.icon)}</i><span><b>${escapeHtml(link.label)}</b><small>${escapeHtml(new URL(link.url).hostname)}</small></span></label>`).join("");
+  $("#quickLinksOptions").innerHTML = quickLinkCatalog.map((link) => `<label><input type="checkbox" name="system_id" value="${escapeHtml(link.id)}" ${selected.has(link.id) ? "checked" : ""} /><i>${escapeHtml(link.icon)}</i><span><b>${escapeHtml(link.label)}</b><small>${escapeHtml(linkLocation(link.url))}</small></span></label>`).join("");
   $("#quickLinksError").textContent = "";
   quickLinksDialog.showModal();
 };
@@ -972,7 +974,7 @@ const setupSearch = () => {
     const allItems = visibleGroups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.label })));
     const items = allItems.filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
     $("#searchResults").innerHTML = items.map((item) => item.url
-      ? `<a class="search-result" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(item.icon)} &nbsp; ${escapeHtml(item.title)}</b><span>${escapeHtml(item.group)} · 새 탭</span></a>`
+      ? `<a class="search-result" href="${escapeHtml(item.url)}"${linkAttributes(item.url)}><b>${escapeHtml(item.icon)} &nbsp; ${escapeHtml(item.title)}</b><span>${escapeHtml(item.group)} · ${isInternalUrl(item.url) ? "내부 이동" : "새 탭"}</span></a>`
       : `<button type="button" class="search-result" data-search-page="${escapeHtml(item.id)}"><b>${escapeHtml(item.icon)} &nbsp; ${escapeHtml(item.title)}</b><span>${escapeHtml(item.group)}</span></button>`).join("") || '<div style="padding:30px;text-align:center;color:#8a9693;font-size:11px">검색 결과가 없습니다.</div>';
     $$('[data-search-page]').forEach((button) => button.addEventListener("click", () => { searchDialog.close(); navigate(button.dataset.searchPage); }));
   };

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex, nofollow">
+<title>MedPark 채권관리</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v={{ build }}">
+</head>
+<body>
+  <div id="root">
+    <div class="boot">
+      <div class="boot__mark">MP</div>
+      <p class="boot__text">채권관리 화면을 불러오는 중입니다.</p>
+      <noscript><p class="boot__text">이 화면은 자바스크립트가 필요합니다.</p></noscript>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js" crossorigin></script>
+  <script>
+    // 라이브러리 로딩 실패는 빈 화면으로 끝나기 쉬우므로 원인을 화면에 남긴다.
+    window.addEventListener("DOMContentLoaded", function () {
+      if (!window.React || !window.ReactDOM) {
+        document.querySelector(".boot__text").textContent =
+          "화면 라이브러리를 불러오지 못했습니다. 사내망에서 cdn.jsdelivr.net 접속이 막혀 있는지 확인하세요.";
+      }
+    });
+  </script>
+  <script src="{{ url_for('static', filename='app.js') }}?v={{ build }}"></script>
+</body>
+</html>
