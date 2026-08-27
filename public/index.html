@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#075f51" />
     <title>MedPark One | 사내 통합 포털</title>
-    <link rel="stylesheet" href="./styles.css?v=20260827-28" />
+    <link rel="stylesheet" href="./styles.css?v=20260827-29" />
   </head>
   <body>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -79,13 +79,12 @@
             <h2 id="loginTitle">임직원 로그인</h2>
             <p>회사에서 발급받은 계정으로 로그인하세요.</p>
           </div>
-          <label>계정 ID<input id="username" type="text" lang="en" inputmode="latin" autocomplete="username" autocapitalize="none" spellcheck="false" value="admin" pattern="[A-Za-z0-9._-]{4,30}" aria-describedby="loginEnglishHint" required /></label>
-          <label>비밀번호<span class="password-wrap"><input id="password" type="password" lang="en" inputmode="latin" autocomplete="current-password" autocapitalize="none" spellcheck="false" value="Preview123!" aria-describedby="loginEnglishHint" required /><button id="togglePassword" type="button" aria-label="비밀번호 표시">보기</button></span></label>
+          <label>계정 ID<input id="username" type="text" lang="en" inputmode="latin" autocomplete="username" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._-]{4,30}" aria-describedby="loginEnglishHint" required /></label>
+          <label>비밀번호<span class="password-wrap"><input id="password" type="password" lang="en" inputmode="latin" autocomplete="current-password" autocapitalize="none" spellcheck="false" aria-describedby="loginEnglishHint" required /><button id="togglePassword" type="button" aria-label="비밀번호 표시">보기</button></span></label>
           <small id="loginEnglishHint" class="login-input-hint">영문 자판으로 입력해 주세요. 한글 입력은 자동으로 제외됩니다.</small>
           <div class="form-options"><label class="check"><input type="checkbox" /> 계정 ID 저장</label><a href="#" id="resetLink">비밀번호 재설정</a></div>
           <p id="loginError" class="form-error"></p>
           <button class="button primary full large" type="submit"><span class="button-label">로그인</span><span class="spinner"></span></button>
-          <div class="preview-account"><b>초기 관리자 계정</b><span>admin / Preview123!</span></div>
         </form>
       </section>
     </div>
@@ -152,6 +151,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=20260827-28" type="module"></script>
+    <script src="./app.js?v=20260827-29" type="module"></script>
   </body>
 </html>
