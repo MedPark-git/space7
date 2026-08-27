@@ -133,7 +133,11 @@ def import_snapshot(snapshot):
     tables = validate_snapshot(snapshot)
     with core.connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT pg_advisory_xact_lock(%s)", (778110,))
+            cur.execute("SET LOCAL lock_timeout = '5s'")
+            cur.execute("SET LOCAL statement_timeout = '60s'")
+            cur.execute("SELECT pg_try_advisory_xact_lock(%s)", (778110,))
+            if not cur.fetchone()[0]:
+                raise MigrationError("다른 포털 복원 작업이 진행 중입니다. 현재 상태를 먼저 확인해 주세요.")
             for table in DELETE_ORDER:
                 cur.execute("DELETE FROM " + _ident(table))
             for table in INSERT_ORDER:
@@ -157,4 +161,7 @@ def database_state():
     if not core.DB_ENABLED:
         raise MigrationError("PostgreSQL 연결이 필요합니다.")
     with core.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SET LOCAL lock_timeout = '5s'")
+            cur.execute("SET LOCAL statement_timeout = '30s'")
         return _database_state(conn)

@@ -1,1 +1,1 @@
-web: gunicorn -w 2 -k gthread --threads 4 -b 0.0.0.0:${PORT:-3000} --timeout 120 wsgi:app
+web: gunicorn -w 2 -k gthread --threads 4 -b 0.0.0.0:${PORT:-3000} --timeout 120 --graceful-timeout 30 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50 --capture-output --access-logfile - --error-logfile - wsgi:app
