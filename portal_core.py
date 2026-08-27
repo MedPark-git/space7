@@ -2,9 +2,12 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
+import threading
+import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -15,10 +18,21 @@ try:
 except ImportError:  # local smoke tests can use the in-memory backend
     psycopg2 = None
 
+logger = logging.getLogger(__name__)
+
 SESSION_COOKIE = "medpark_session"
 SESSION_TTL = timedelta(hours=12)
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{4,30}$")
 DB_ENABLED = bool(psycopg2) and all(os.environ.get(k) for k in ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"))
+
+_database_state_lock = threading.Lock()
+_database_init_started = False
+_database_state = {
+    "state": "pending" if DB_ENABLED else "ready",
+    "attempts": 0,
+    "admin_ready": not DB_ENABLED,
+    "setup_required": False,
+}
 
 EDITABLE_MENU_IDS = {
     "group_workspace", "group_business", "group_collaboration",
@@ -217,36 +231,97 @@ CREATE TABLE IF NOT EXISTS user_quick_links (
 """
 
 
+def _set_database_state(**values):
+    with _database_state_lock:
+        _database_state.update(values)
+
+
+def database_status():
+    with _database_state_lock:
+        state = dict(_database_state)
+    return {
+        "database": "postgresql" if DB_ENABLED else "memory",
+        "database_state": state["state"],
+        "database_attempts": state["attempts"],
+        "admin_ready": state["admin_ready"],
+        "setup_required": state["setup_required"],
+    }
+
+
+def ensure_database_ready():
+    state = database_status()
+    if state["database_state"] == "ready":
+        return
+    if state["setup_required"]:
+        raise AppError("초기 관리자 비밀번호 설정이 필요합니다.", 503)
+    raise AppError("데이터베이스 초기화 중입니다. 잠시 후 다시 시도해 주세요.", 503)
+
+
+def _initialize_database_once():
+    password = os.environ.get("INITIAL_ADMIN_PASSWORD")
+    with connection() as conn:
+        with conn.cursor() as cur:
+            # Gunicorn workers may start together. Lock before any DDL so only one
+            # worker creates or alters the schema at a time.
+            cur.execute("SELECT pg_advisory_xact_lock(%s)", (778107,))
+            cur.execute(SCHEMA)
+            labels = {
+                "group_workspace": "WORKSPACE", "group_business": "BUSINESS", "group_collaboration": "COLLABORATION",
+                "management": "경영사업본부", "marketing": "마케팅 사업본부", "technology": "기술사업본부",
+                "amarans": "아마란스", "meetings": "회의록", "calendar": "일정(캘린더)",
+            }
+            for menu_id, label in labels.items():
+                cur.execute("INSERT INTO portal_menu_labels(menu_id,label) VALUES(%s,%s) ON CONFLICT(menu_id) DO NOTHING", (menu_id, label))
+            cur.execute("SELECT count(*) FROM users WHERE status='active' AND role='admin'")
+            admin_ready = cur.fetchone()[0] > 0
+            if not admin_ready and password and len(password) >= 12:
+                cur.execute(
+                    "INSERT INTO users(id,username,email,password_hash,name,employee_no,department,role,status) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (str(uuid.uuid4()), "admin", None, hash_password(password), "관리자", "M001", "경영사업본부", "admin", "active"),
+                )
+                admin_ready = True
+    return admin_ready
+
+
+def _database_init_worker(max_attempts=30):
+    for attempt in range(1, max_attempts + 1):
+        _set_database_state(state="initializing", attempts=attempt, setup_required=False)
+        try:
+            admin_ready = _initialize_database_once()
+            _set_database_state(
+                state="ready" if admin_ready else "setup_required",
+                admin_ready=admin_ready,
+                setup_required=not admin_ready,
+            )
+            return
+        except Exception:
+            logger.exception("Database initialization attempt %s failed", attempt)
+            _set_database_state(state="retrying")
+            if attempt == max_attempts:
+                _set_database_state(state="error")
+                return
+            time.sleep(min(2 + attempt, 10))
+
+
 def init_database():
+    global _database_init_started
     if DB_ENABLED:
-        with connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(SCHEMA)
-                cur.execute("SELECT pg_advisory_xact_lock(%s)", (778107,))
-                labels = {
-                    "group_workspace": "WORKSPACE", "group_business": "BUSINESS", "group_collaboration": "COLLABORATION",
-                    "management": "경영사업본부", "marketing": "마케팅 사업본부", "technology": "기술사업본부",
-                    "amarans": "아마란스", "meetings": "회의록", "calendar": "일정(캘린더)",
-                }
-                for menu_id, label in labels.items():
-                    cur.execute("INSERT INTO portal_menu_labels(menu_id,label) VALUES(%s,%s) ON CONFLICT(menu_id) DO NOTHING", (menu_id, label))
-                cur.execute("SELECT count(*) FROM users WHERE status='active' AND role='admin'")
-                if cur.fetchone()[0] == 0:
-                    password = os.environ.get("INITIAL_ADMIN_PASSWORD")
-                    if not password or len(password) < 12:
-                        raise RuntimeError("INITIAL_ADMIN_PASSWORD(12자 이상)가 필요합니다. 안전하지 않은 기본 비밀번호는 생성하지 않습니다.")
-                    cur.execute(
-                        "INSERT INTO users(id,username,email,password_hash,name,employee_no,department,role,status) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                        (str(uuid.uuid4()), "admin", None, hash_password(password), "관리자", "M001", "경영사업본부", "admin", "active"),
-                    )
-    else:
-        password = os.environ.get("INITIAL_ADMIN_PASSWORD", "LocalTestOnly!234")
-        user_id = str(uuid.uuid4())
-        _memory["users"][user_id] = {
-            "id": user_id, "username": "admin", "email": "", "password_hash": hash_password(password),
-            "name": "관리자", "employee_no": "M001", "department": "경영사업본부",
-            "role": "admin", "status": "active", "created_at": datetime.now(timezone.utc),
-        }
+        with _database_state_lock:
+            if _database_init_started:
+                return
+            _database_init_started = True
+        threading.Thread(target=_database_init_worker, name="portal-db-init", daemon=True).start()
+        return
+
+    if _memory["users"]:
+        return
+    password = os.environ.get("INITIAL_ADMIN_PASSWORD", "LocalTestOnly!234")
+    user_id = str(uuid.uuid4())
+    _memory["users"][user_id] = {
+        "id": user_id, "username": "admin", "email": "", "password_hash": hash_password(password),
+        "name": "관리자", "employee_no": "M001", "department": "경영사업본부",
+        "role": "admin", "status": "active", "created_at": datetime.now(timezone.utc),
+    }
 
 
 def find_user_by_username(username):

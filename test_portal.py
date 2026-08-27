@@ -22,6 +22,8 @@ class PortalSmokeTest(unittest.TestCase):
         response = self.client.get("/api/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["runtime"], "python-flask")
+        self.assertEqual(response.get_json()["database_state"], "ready")
+        self.assertTrue(response.get_json()["admin_ready"])
 
     def test_portal_and_empty_calendar(self):
         self.login()

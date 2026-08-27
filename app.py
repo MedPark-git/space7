@@ -26,6 +26,7 @@ def request_ip():
 
 
 def current_user(admin=False):
+    core.ensure_database_ready()
     user = core.get_session_user(request.cookies.get(core.SESSION_COOKIE))
     if not user:
         raise core.AppError("로그인이 필요합니다.", 401)
@@ -60,11 +61,12 @@ def handle_error(error):
 
 @portal.get("/api/health")
 def health():
-    return jsonify(status="ok", database="postgresql" if core.DB_ENABLED else "memory", runtime="python-flask")
+    return jsonify(status="ok", runtime="python-flask", **core.database_status())
 
 
 @portal.post("/api/auth/login")
 def login():
+    core.ensure_database_ready()
     data = payload()
     user = core.find_user_by_username(data.get("username"))
     if not user or user.get("status") != "active" or not core.verify_password(str(data.get("password") or ""), user.get("password_hash")):
