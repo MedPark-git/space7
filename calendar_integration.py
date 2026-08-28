@@ -533,6 +533,8 @@ def _events_for_calendar(calendar, row, start, end, access_token=None):
                     "calendar_name": calendar.get("summary") or calendar_id,
                     "calendar_color": calendar.get("background_color") or "#0a9b7e",
                     "calendar_foreground": calendar.get("foreground_color") or "#ffffff",
+                    "description": item.get("description") or "",
+                    "location": item.get("location") or "",
                 }
             )
         page_token = result.get("nextPageToken")
