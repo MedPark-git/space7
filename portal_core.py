@@ -236,9 +236,39 @@ def _set_database_state(**values):
         _database_state.update(values)
 
 
+def _database_admin_is_ready():
+    """Reconcile per-worker readiness with the shared PostgreSQL state."""
+    if not DB_ENABLED:
+        return True
+    try:
+        with connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SET LOCAL statement_timeout = '3000ms'")
+                cur.execute("SELECT to_regclass('public.users')")
+                if cur.fetchone()[0] is None:
+                    return False
+                cur.execute("SELECT EXISTS(SELECT 1 FROM users WHERE status='active' AND role='admin')")
+                return bool(cur.fetchone()[0])
+    except Exception:
+        return False
+
+
 def database_status():
     with _database_state_lock:
         state = dict(_database_state)
+
+    # Gunicorn workers do not share Python memory. A worker that is waiting for
+    # the initialization lock must still become ready when another worker has
+    # already completed the shared PostgreSQL schema and administrator setup.
+    if DB_ENABLED and state["state"] != "ready" and _database_admin_is_ready():
+        _set_database_state(
+            state="ready",
+            admin_ready=True,
+            setup_required=False,
+        )
+        with _database_state_lock:
+            state = dict(_database_state)
+
     return {
         "database": "postgresql" if DB_ENABLED else "memory",
         "database_state": state["state"],
@@ -261,9 +291,13 @@ def _initialize_database_once():
     password = os.environ.get("INITIAL_ADMIN_PASSWORD")
     with connection() as conn:
         with conn.cursor() as cur:
-            # Gunicorn workers may start together. Lock before any DDL so only one
-            # worker creates or alters the schema at a time.
-            cur.execute("SELECT pg_advisory_xact_lock(%s)", (778107,))
+            # Gunicorn workers may start together. Never wait indefinitely for
+            # another worker or an unrelated DDL transaction.
+            cur.execute("SET LOCAL lock_timeout = '10000ms'")
+            cur.execute("SET LOCAL statement_timeout = '60000ms'")
+            cur.execute("SELECT pg_try_advisory_xact_lock(%s)", (778107,))
+            if not cur.fetchone()[0]:
+                raise RuntimeError("Database initialization lock is busy")
             cur.execute(SCHEMA)
             labels = {
                 "group_workspace": "WORKSPACE", "group_business": "BUSINESS", "group_collaboration": "COLLABORATION",
