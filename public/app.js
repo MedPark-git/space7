@@ -24,7 +24,10 @@ const menuGroups = [
       { id: "tf_ar", title: "미수채권", url: "https://medprk-ar-dashboard.mycafe24.ai/" }
     ]},
     { id: "amarans", icon: "A", title: "아마란스", url: "https://gw.medpark.kr/" },
-    { id: "meetings", icon: "☷", title: "회의록" },
+    { id: "meetings", icon: "☷", title: "회의록", children: [
+      { id: "meetings_openai", title: "회의록_OpenAI", url: null },
+      { id: "meetings_plaud", title: "회의록_Plaud", url: null }
+    ]},
     { id: "calendar", icon: "□", title: "일정(캘린더)" }
   ]},
   { id: "admin", label: "ADMIN", items: [
@@ -67,7 +70,7 @@ const builtInEditableMenuIds = new Set([
   "group_workspace", "group_business", "group_collaboration",
   "management", "management_ar", "management_hr", "management_routine",
   "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
-  "technology", "technology_focus", "amarans", "meetings", "calendar", "tf", "tf_ar"
+  "technology", "technology_focus", "amarans", "meetings", "meetings_openai", "meetings_plaud", "calendar", "tf", "tf_ar"
 ]);
 const editableTopMenuItems = () => menuGroups.flatMap((group) => group.items).filter((item) => item.id !== "dashboard" && item.id !== "admin");
 const editableMenuItems = () => editableTopMenuItems().flatMap((item) => [item, ...(item.children || [])]);
