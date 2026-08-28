@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import html
 import json
 import logging
 import os
@@ -28,6 +29,30 @@ MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 _schema_lock = threading.Lock()
 _schema_ready = False
+
+
+def _plain_text(value):
+    raw = str(value or "")
+    if not raw:
+        return ""
+    text = re.sub(r"<(script|style)\b[^>]*>.*?</\1\s*>", "", raw, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<br\s*/?\s*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</(?:p|div|li|ul|ol|h[1-6]|tr)\s*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<li\b[^>]*>", "• ", text, flags=re.IGNORECASE)
+    text = re.sub(r"<td\b[^>]*>", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = html.unescape(text).replace("\xa0", " ")
+    lines = []
+    for line in text.splitlines():
+        cleaned = re.sub(r"[ \t]+", " ", line).strip()
+        if cleaned:
+            lines.append(cleaned)
+        elif lines and lines[-1] != "":
+            lines.append("")
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines)
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS portal_calendar_settings (
@@ -533,7 +558,7 @@ def _events_for_calendar(calendar, row, start, end, access_token=None):
                     "calendar_name": calendar.get("summary") or calendar_id,
                     "calendar_color": calendar.get("background_color") or "#0a9b7e",
                     "calendar_foreground": calendar.get("foreground_color") or "#ffffff",
-                    "description": item.get("description") or "",
+                    "description": _plain_text(item.get("description")),
                     "location": item.get("location") or "",
                 }
             )
