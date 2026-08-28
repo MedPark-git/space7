@@ -38,7 +38,7 @@ EDITABLE_MENU_IDS = {
     "group_workspace", "group_business", "group_collaboration",
     "management", "management_ar", "management_hr", "management_routine",
     "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
-    "technology", "technology_focus", "amarans", "meetings", "calendar", "tf", "tf_ar",
+    "technology", "technology_focus", "amarans", "meetings", "meetings_openai", "meetings_plaud", "calendar", "tf", "tf_ar",
 }
 MENU_GROUP_IDS = ["workspace", "business", "collaboration"]
 BUILTIN_MEMBERSHIP = {
@@ -47,6 +47,7 @@ BUILTIN_MEMBERSHIP = {
     "business": ["management", "marketing", "technology"],
     "collaboration": ["tf", "amarans", "meetings", "calendar"],
     "tf": ["tf_ar"],
+    "meetings": ["meetings_openai", "meetings_plaud"],
     "management": ["management_ar", "management_hr", "management_routine"],
     "marketing": ["marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global"],
     "technology": ["technology_focus"],
@@ -304,6 +305,7 @@ def _initialize_database_once():
                 "group_workspace": "WORKSPACE", "group_business": "BUSINESS", "group_collaboration": "COLLABORATION",
                 "management": "경영사업본부", "marketing": "마케팅 사업본부", "technology": "기술사업본부",
                 "amarans": "아마란스", "meetings": "회의록", "calendar": "일정(캘린더)",
+                "meetings_openai": "회의록_OpenAI", "meetings_plaud": "회의록_Plaud",
                 "tf": "TF", "tf_ar": "미수채권",
             }
             for menu_id, label in labels.items():
