@@ -29,6 +29,7 @@ const menuGroups = [
   ]},
   { id: "admin", label: "ADMIN", items: [
     { id: "admin", icon: "⚙", title: "포털 관리" },
+    { id: "admin_calendar", icon: "□", title: "일정(캘린더)_관리자" },
   ]}
 ];
 
@@ -244,20 +245,21 @@ const renderNavigation = () => {
 };
 
 const navigate = (page) => {
-  if (page === "admin" && currentUser?.role !== "admin") {
+  if (["admin", "admin_calendar"].includes(page) && currentUser?.role !== "admin") {
     page = "dashboard";
     showToast("관리자 전용 메뉴입니다.");
   }
   currentPage = page;
   clearInterval(carouselTimer);
   pageContent.classList.toggle("dashboard-page", page === "dashboard");
-  pageContent.classList.toggle("calendar-page", page === "calendar");
+  pageContent.classList.toggle("calendar-page", ["calendar", "admin_calendar"].includes(page));
   renderNavigation();
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.nav === page));
   const title = menuGroups.flatMap((g) => g.items).find((item) => item.id === page)?.title || "통합 대시보드";
   $("#breadcrumbText").textContent = title;
   if (page === "dashboard") renderDashboard();
   else if (page === "admin") renderAdmin();
+  else if (page === "admin_calendar") renderCalendarSettings();
   else if (page === "calendar") renderCalendarPage();
   else renderPlaceholder(title, page);
   closeSidebar();
