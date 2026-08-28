@@ -2,9 +2,10 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, make_response, request, send_from_directory
+from flask import Flask, jsonify, make_response, redirect, request, send_from_directory
 from werkzeug.exceptions import HTTPException
 
+import calendar_integration as calendar
 import portal_core as core
 
 ROOT = Path(__file__).resolve().parent
@@ -23,6 +24,16 @@ def payload():
 
 def request_ip():
     return (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
+
+
+def calendar_redirect_uri():
+    scheme = (request.headers.get("X-Forwarded-Proto") or request.scheme or "https").split(",")[0].strip().lower()
+    host = (request.headers.get("X-Forwarded-Host") or request.host or "").split(",")[0].strip()
+    if scheme not in ("http", "https"):
+        scheme = "https"
+    if not host or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:" for character in host):
+        raise core.AppError("캘린더 OAuth 리디렉션 주소를 확인할 수 없습니다.", 503)
+    return f"{scheme}://{host}/api/admin/calendar/oauth/callback"
 
 
 def current_user(admin=False):
@@ -145,16 +156,58 @@ def users_patch(user_id):
     return json_response({"user": core.update_user(str(user_id), payload(), actor, request_ip())})
 
 
+@portal.get("/api/admin/calendar/settings")
+def calendar_settings_get():
+    current_user(True)
+    return json_response(calendar.settings_payload(calendar_redirect_uri()))
+
+
+@portal.put("/api/admin/calendar/settings")
+def calendar_settings_put():
+    actor = current_user(True)
+    return json_response(calendar.update_settings(payload(), actor, request_ip(), calendar_redirect_uri()))
+
+
+@portal.post("/api/admin/calendar/test")
+def calendar_test():
+    current_user(True)
+    return json_response(calendar.test_connection())
+
+
+@portal.get("/api/admin/calendar/calendars")
+def calendar_list_get():
+    current_user(True)
+    return json_response(calendar.list_calendars())
+
+
+@portal.put("/api/admin/calendar/calendars")
+def calendar_list_put():
+    actor = current_user(True)
+    return json_response(calendar.save_selected_calendars(payload(), actor, request_ip()))
+
+
+@portal.post("/api/admin/calendar/oauth/start")
+def calendar_oauth_start():
+    actor = current_user(True)
+    return json_response(calendar.start_oauth(actor, calendar_redirect_uri(), request_ip()))
+
+
+@portal.get("/api/admin/calendar/oauth/callback")
+def calendar_oauth_callback():
+    result = calendar.finish_oauth(
+        request.args.get("code"),
+        request.args.get("state"),
+        request.args.get("error"),
+        request_ip(),
+    )
+    outcome = "connected" if result.get("connected") else "cancelled"
+    return redirect(f"/?calendar={outcome}", code=302)
+
+
 @portal.get("/api/calendar/events")
 def calendar_events():
     current_user()
-    return json_response({
-        "connected": False,
-        "calendar_count": 0,
-        "events": [],
-        "warnings": [],
-        "message": "캘린더 API 연동은 추후 적용될 예정입니다.",
-    })
+    return json_response(calendar.list_events(request.args.get("month")))
 
 
 @portal.get("/")
