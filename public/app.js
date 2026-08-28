@@ -20,6 +20,9 @@ const menuGroups = [
     ]}
   ]},
   { id: "collaboration", label: "COLLABORATION", items: [
+    { id: "tf", icon: "T", title: "TF", children: [
+      { id: "tf_ar", title: "미수채권", url: "https://medprk-ar-dashboard.mycafe24.ai/" }
+    ]},
     { id: "amarans", icon: "A", title: "아마란스", url: "https://gw.medpark.kr/" },
     { id: "meetings", icon: "☷", title: "회의록" },
     { id: "calendar", icon: "□", title: "일정(캘린더)" }
@@ -59,7 +62,7 @@ const builtInEditableMenuIds = new Set([
   "group_workspace", "group_business", "group_collaboration",
   "management", "management_ar", "management_hr", "management_routine",
   "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
-  "technology", "technology_focus", "amarans", "meetings", "calendar"
+  "technology", "technology_focus", "amarans", "meetings", "calendar", "tf", "tf_ar"
 ]);
 const editableTopMenuItems = () => menuGroups.flatMap((group) => group.items).filter((item) => item.id !== "dashboard" && item.id !== "admin");
 const editableMenuItems = () => editableTopMenuItems().flatMap((item) => [item, ...(item.children || [])]);
@@ -564,7 +567,7 @@ const updateMenuCreateParentOptions = () => {
   const parentSelect = $("#menuCreateParent");
   if (!groupSelect || !parentSelect) return;
   const group = menuGroups.find((candidate) => candidate.id === groupSelect.value);
-  parentSelect.innerHTML = `<option value="">${escapeHtml(group?.label || "선택한 최상단")} 바로 아래</option>${(group?.items || []).map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)} 하위</option>`).join("")}`;
+  parentSelect.innerHTML = `<option value="">${escapeHtml(group?.label || "선택한 최상단")} 바로 아래<[REDACTED]>${(group?.items || []).map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)} 하위<[REDACTED]>`).join("")}`;
 };
 
 const renderAdminTab = (tab) => {
@@ -607,7 +610,7 @@ const renderAdminTab = (tab) => {
           ${menuOrderMarkup()}
           <form id="menuCreateForm" class="menu-create-form">
             <div><span class="eyebrow">NEW CATEGORY</span><h2>카테고리 등록</h2><p>소속 최상단을 지정한 뒤 바로 아래 또는 기존 카테고리 하위에 추가합니다. ADMIN은 고정 영역입니다.</p></div>
-            <label>최상단 카테고리<select id="menuCreateGroup" name="group_id" required>${configurableMenuGroups().map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.label)}</option>`).join("")}</select></label>
+            <label>최상단 카테고리<select id="menuCreateGroup" name="group_id" required>${configurableMenuGroups().map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.label)}<[REDACTED]>`).join("")}</select></label>
             <label>등록 위치<select id="menuCreateParent" name="parent_id"></select></label>
             <label>카테고리 이름<input name="label" minlength="1" maxlength="40" placeholder="새 카테고리 이름" required /></label>
             <label>연결 URL <small>선택</small><input name="url" type="url" placeholder="https://" /></label>
@@ -826,7 +829,7 @@ const calendarSettingsMarkup = (settings) => `
     </article>
     <form id="calendarSettingsForm" class="calendar-settings-form">
       <div class="settings-section-heading"><span class="eyebrow">GOOGLE CALENDAR</span><h2>연결 방식 설정</h2><p>API 키는 공개 캘린더용이며, 비공개 캘린더는 OAuth 2.0 승인이 필요합니다.</p></div>
-      <label>연결 방식<select name="mode" id="calendarMode"><option value="api_key" ${settings.mode !== "oauth" ? "selected" : ""}>API 키 · 공개 캘린더</option><option value="oauth" ${settings.mode === "oauth" ? "selected" : ""}>OAuth 2.0 · 비공개 캘린더</option></select></label>
+      <label>연결 방식<select name="mode" id="calendarMode"><option value="api_key" ${settings.mode !== "oauth" ? "selected" : ""}>API 키 · 공개 캘린더<[REDACTED]><option value="oauth" ${settings.mode === "oauth" ? "selected" : ""}>OAuth 2.0 · 비공개 캘린더<[REDACTED]></select></label>
       <label>Google 캘린더 ID<input name="calendar_id" value="${escapeHtml(settings.calendar_id || "medpark.remote@gmail.com")}" maxlength="255" required /><small>기본 캘린더는 보통 Google 계정 이메일과 같습니다.</small></label>
       <div id="apiKeyFields" class="calendar-mode-fields">
         <label>Calendar API 키<input name="api_key" type="password" autocomplete="new-password" placeholder="${settings.api_key_saved ? "저장된 API 키 유지" : "AIza..."}" /><small>Google Cloud에서 Calendar API를 활성화하고 생성한 키를 입력합니다.</small></label>
