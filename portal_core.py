@@ -38,14 +38,15 @@ EDITABLE_MENU_IDS = {
     "group_workspace", "group_business", "group_collaboration",
     "management", "management_ar", "management_hr", "management_routine",
     "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
-    "technology", "technology_focus", "amarans", "meetings", "calendar",
+    "technology", "technology_focus", "amarans", "meetings", "calendar", "tf", "tf_ar",
 }
 MENU_GROUP_IDS = ["workspace", "business", "collaboration"]
 BUILTIN_MEMBERSHIP = {
     "root": MENU_GROUP_IDS,
     "workspace": ["dashboard"],
     "business": ["management", "marketing", "technology"],
-    "collaboration": ["amarans", "meetings", "calendar"],
+    "collaboration": ["tf", "amarans", "meetings", "calendar"],
+    "tf": ["tf_ar"],
     "management": ["management_ar", "management_hr", "management_routine"],
     "marketing": ["marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global"],
     "technology": ["technology_focus"],
@@ -303,6 +304,7 @@ def _initialize_database_once():
                 "group_workspace": "WORKSPACE", "group_business": "BUSINESS", "group_collaboration": "COLLABORATION",
                 "management": "경영사업본부", "marketing": "마케팅 사업본부", "technology": "기술사업본부",
                 "amarans": "아마란스", "meetings": "회의록", "calendar": "일정(캘린더)",
+                "tf": "TF", "tf_ar": "미수채권",
             }
             for menu_id, label in labels.items():
                 cur.execute("INSERT INTO portal_menu_labels(menu_id,label) VALUES(%s,%s) ON CONFLICT(menu_id) DO NOTHING", (menu_id, label))
