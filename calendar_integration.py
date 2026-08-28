@@ -9,7 +9,9 @@ import secrets
 import threading
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo
 
@@ -29,6 +31,14 @@ MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 _schema_lock = threading.Lock()
 _schema_ready = False
+_token_lock = threading.Lock()
+_token_cache = {"identity": "", "access_token": "", "expires_at": 0.0}
+_event_cache_lock = threading.Lock()
+_event_cache = {}
+_calendar_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="calendar-fetch")
+
+HTTP_TIMEOUT_SECONDS = 8
+EVENT_CACHE_TTL_SECONDS = 300
 
 
 def _plain_text(value):
@@ -52,7 +62,6 @@ def _plain_text(value):
     while lines and lines[-1] == "":
         lines.pop()
     return "\n".join(lines)
-
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS portal_calendar_settings (
@@ -249,7 +258,7 @@ def _google_error(payload, fallback="Google Calendar 요청에 실패했습니�
 
 def _http_json(request, fallback):
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
+        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
             raw = response.read()
     except urllib.error.HTTPError as error:
         raw = error.read()
@@ -287,24 +296,45 @@ def _token_request(data):
 
 
 def _oauth_access_token(row=None):
+    global _token_cache
     row = row or _settings()
     refresh_token = _decrypt(row.get("oauth_refresh_token_cipher"))
     client_secret = _decrypt(row.get("oauth_client_secret_cipher"))
     client_id = str(row.get("oauth_client_id") or "")
     if not client_id or not client_secret or not refresh_token:
         raise CalendarError("Google 계정 승인이 필요합니다.", 409)
-    token = _token_request(
-        {
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
+    identity = hashlib.sha256(
+        f"{client_id}:{row.get('oauth_refresh_token_cipher') or ''}".encode("utf-8")
+    ).hexdigest()
+    now = monotonic()
+    with _token_lock:
+        if (
+            _token_cache.get("identity") == identity
+            and _token_cache.get("access_token")
+            and float(_token_cache.get("expires_at") or 0) > now
+        ):
+            return _token_cache["access_token"]
+        token = _token_request(
+            {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            }
+        )
+        access_token = str(token.get("access_token") or "")
+        if not access_token:
+            raise CalendarError("Google OAuth 액세스 토큰을 받지 못했습니다.", 502)
+        try:
+            expires_in = max(120, int(token.get("expires_in") or 3600))
+        except (TypeError, ValueError):
+            expires_in = 3600
+        _token_cache = {
+            "identity": identity,
+            "access_token": access_token,
+            "expires_at": monotonic() + expires_in - 60,
         }
-    )
-    access_token = str(token.get("access_token") or "")
-    if not access_token:
-        raise CalendarError("Google OAuth 액세스 토큰을 받지 못했습니다.", 502)
-    return access_token
+        return access_token
 
 
 def start_oauth(actor, redirect_uri, ip):
@@ -568,9 +598,41 @@ def _events_for_calendar(calendar, row, start, end, access_token=None):
     return events
 
 
+def _event_cache_key(month, row, calendars):
+    calendar_ids = tuple(str(item.get("calendar_id") or "") for item in calendars)
+    return (
+        str(month),
+        str(row.get("mode") or "api_key"),
+        str(row.get("updated_at") or ""),
+        calendar_ids,
+    )
+
+
+def _cached_event_result(cache_key):
+    now = monotonic()
+    with _event_cache_lock:
+        expired = [key for key, entry in _event_cache.items() if entry["expires_at"] <= now]
+        for key in expired:
+            _event_cache.pop(key, None)
+        entry = _event_cache.get(cache_key)
+        return entry["result"] if entry else None
+
+
+def _store_event_result(cache_key, result):
+    with _event_cache_lock:
+        _event_cache[cache_key] = {
+            "expires_at": monotonic() + EVENT_CACHE_TTL_SECONDS,
+            "result": result,
+        }
+        if len(_event_cache) > 24:
+            oldest = min(_event_cache, key=lambda key: _event_cache[key]["expires_at"])
+            _event_cache.pop(oldest, None)
+
+
 def list_events(month):
     row = _settings()
     start, end = _month_range(month)
+    normalized_month = start.strftime("%Y-%m")
     mode = row.get("mode") or "api_key"
     if mode == "oauth":
         configured = bool(row.get("oauth_refresh_token_cipher"))
@@ -591,18 +653,36 @@ def list_events(month):
             "message": "관리자 메뉴에서 Google Calendar 연결 설정이 필요합니다.",
         }
 
+    calendars = calendars[:50]
+    cache_key = _event_cache_key(normalized_month, row, calendars)
+    cached = _cached_event_result(cache_key)
+    if cached is not None:
+        return {**cached, "cached": True}
+
     events, warnings = [], []
-    for calendar in calendars[:50]:
+    futures = {
+        _calendar_executor.submit(_events_for_calendar, calendar, row, start, end, access_token): calendar
+        for calendar in calendars
+    }
+    for future in as_completed(futures):
+        calendar = futures[future]
         try:
-            events.extend(_events_for_calendar(calendar, row, start, end, access_token))
+            events.extend(future.result())
         except CalendarError as error:
             logger.warning("Calendar fetch failed for %s: %s", calendar.get("calendar_id"), error)
             warnings.append(f"{calendar.get('summary') or calendar.get('calendar_id')}: {error}")
+        except Exception as error:
+            logger.exception("Unexpected calendar fetch failure for %s", calendar.get("calendar_id"))
+            warnings.append(f"{calendar.get('summary') or calendar.get('calendar_id')}: 일정을 불러오지 못했습니다.")
     events.sort(key=lambda item: (str(item.get("start") or ""), str(item.get("title") or "")))
-    return {
+    result = {
         "connected": len(warnings) < len(calendars),
         "calendar_count": len(calendars),
         "events": events,
         "warnings": warnings,
         "message": "일정을 불러왔습니다." if len(warnings) < len(calendars) else "Google Calendar 일정을 불러오지 못했습니다.",
+        "cached": False,
     }
+    if result["connected"]:
+        _store_event_result(cache_key, result)
+    return result
