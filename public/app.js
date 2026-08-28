@@ -58,6 +58,10 @@ let employeeCache = [];
 let editingEmployeeId = null;
 let quickLinks = [];
 let quickLinkCatalog = [];
+const CALENDAR_EVENT_CACHE_MS = 5 * 60 * 1000;
+const calendarEventCache = new Map();
+const calendarEventRequests = new Map();
+let calendarRenderRequestId = 0;
 
 const builtInEditableMenuIds = new Set([
   "group_workspace", "group_business", "group_collaboration",
@@ -290,16 +294,38 @@ const renderCalendarDays = (events = [], selectedKey = "") => {
   return heads + days;
 };
 
+const clearCalendarEventCache = () => {
+  calendarEventCache.clear();
+  calendarEventRequests.clear();
+};
+
+const loadCalendarEvents = async (monthKey) => {
+  const cached = calendarEventCache.get(monthKey);
+  if (cached && Date.now() - cached.savedAt < CALENDAR_EVENT_CACHE_MS) return cached.result;
+  if (calendarEventRequests.has(monthKey)) return calendarEventRequests.get(monthKey);
+  const request = fetch("/api/calendar/events?month=" + encodeURIComponent(monthKey), { headers: { accept: "application/json" } })
+    .then(async (response) => {
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      calendarEventCache.set(monthKey, { savedAt: Date.now(), result });
+      return result;
+    })
+    .finally(() => calendarEventRequests.delete(monthKey));
+  calendarEventRequests.set(monthKey, request);
+  return request;
+};
+
 const renderCalendarView = async () => {
   const body = $("#carouselBody");
   if (!body || carouselMode !== "calendar") return;
+  const requestId = ++calendarRenderRequestId;
   const year = calendarMonth.getFullYear();
   const month = calendarMonth.getMonth() + 1;
+  const monthKey = `${year}-${String(month).padStart(2,"0")}`;
   body.innerHTML = `<div class="calendar-loading"><span class="spinner"></span><p>Google Calendar 일정을 불러오는 중입니다.</p></div>`;
   try {
-    const response = await fetch(`/api/calendar/events?month=${year}-${String(month).padStart(2,"0")}`, { headers: { accept: "application/json" } });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.message);
+    const result = await loadCalendarEvents(monthKey);
+    if (requestId !== calendarRenderRequestId || carouselMode !== "calendar" || !body.isConnected) return;
     const events = result.events || [];
     const today = new Date();
     const todayCount = $("#todayScheduleCount");
@@ -335,6 +361,7 @@ const renderCalendarView = async () => {
     };
     drawSelectedDate(calendarKey(initialDate));
   } catch (error) {
+    if (requestId !== calendarRenderRequestId || carouselMode !== "calendar" || !body.isConnected) return;
     body.innerHTML = `<div class="calendar-error-state"><i>!</i><h3>일정을 불러오지 못했습니다.</h3><p>${escapeHtml(error.message || "잠시 후 다시 시도하거나 관리자에게 문의해 주세요.")}</p></div>`;
   }
 };
@@ -899,6 +926,7 @@ const bindCalendarPicker = () => {
       const response = await fetch("/api/admin/calendar/calendars", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ calendar_ids: calendarIds }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message);
+      clearCalendarEventCache();
       showToast(`${result.selected_calendars.length}개 캘린더가 저장되었습니다.`);
       await loadCalendarSettingsPage();
     } catch (error) {
@@ -927,6 +955,7 @@ const loadCalendarSettingsPage = async () => {
         const saveResponse = await fetch("/api/admin/calendar/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         const result = await saveResponse.json();
         if (!saveResponse.ok) throw new Error(result.message);
+        clearCalendarEventCache();
         showToast("Google Calendar 연결 설정이 안전하게 저장되었습니다.");
         await loadCalendarSettingsPage();
       } catch (error) { $("#calendarSettingsError").textContent = error.message || "설정 저장에 실패했습니다."; }
