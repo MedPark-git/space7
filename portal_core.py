@@ -230,6 +230,19 @@ CREATE TABLE IF NOT EXISTS user_quick_links (
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE, system_id varchar(30) NOT NULL,
   position integer NOT NULL, updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (user_id, system_id)
 );
+CREATE TABLE IF NOT EXISTS plaud_meetings (
+  id uuid PRIMARY KEY, created_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  title varchar(200) NOT NULL, source_filename varchar(255) NOT NULL,
+  file_size bigint NOT NULL DEFAULT 0, file_type varchar(12) NOT NULL,
+  plaud_file_id text, plaud_transcription_id text UNIQUE,
+  status varchar(20) NOT NULL DEFAULT 'processing', plaud_status varchar(30),
+  language varchar(30), duration_seconds numeric, transcript text,
+  transcript_segments jsonb NOT NULL DEFAULT '[]'::jsonb, error_message text,
+  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  completed_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_plaud_meetings_created_at ON plaud_meetings (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_plaud_meetings_status ON plaud_meetings (status, updated_at);
 """
 
 
