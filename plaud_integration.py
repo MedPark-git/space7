@@ -158,6 +158,14 @@ def _title(value, filename):
     return title or "새 회의록"
 
 
+def _bounded_int(value, default, minimum, maximum):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(maximum, parsed))
+
+
 def mask_title(title):
     text = str(title or "회의록").strip()
     if len(text) <= 1:
@@ -191,18 +199,22 @@ def start_upload(data, user):
     parts = result.get("Parts") or result.get("parts") or []
     if not file_id or not upload_id or not chunk_size or not parts:
         raise core.AppError("PLAUD 업로드 주소를 발급받지 못했습니다.", 502)
+    normalized_parts = []
+    for part in parts:
+        try:
+            part_number = int(part.get("PartNumber") or part.get("part_number"))
+        except (TypeError, ValueError, AttributeError):
+            raise core.AppError("PLAUD 업로드 조각 정보가 올바르지 않습니다.", 502)
+        upload_url = str(part.get("PresignedUrl") or part.get("presigned_url") or "").strip()
+        if part_number < 1 or not upload_url.startswith("https://"):
+            raise core.AppError("PLAUD 업로드 주소가 올바르지 않습니다.", 502)
+        normalized_parts.append({"part_number": part_number, "upload_url": upload_url})
     return {
         "file_id": file_id,
         "upload_id": upload_id,
         "chunk_size": int(chunk_size),
         "file_type": file_type,
-        "parts": [
-            {
-                "part_number": int(part.get("PartNumber") or part.get("part_number")),
-                "upload_url": part.get("PresignedUrl") or part.get("presigned_url"),
-            }
-            for part in parts
-        ],
+        "parts": normalized_parts,
     }
 
 
@@ -338,8 +350,8 @@ def _where_clause(query="", status=""):
 
 
 def list_meetings(actor, query="", status="", page=1, page_size=20):
-    page = max(1, int(page or 1))
-    page_size = max(5, min(50, int(page_size or 20)))
+    page = _bounded_int(page, 1, 1, 100000)
+    page_size = _bounded_int(page_size, 20, 5, 50)
     if not core.DB_ENABLED:
         rows = list(_memory_meetings.values())
         if status:
@@ -445,7 +457,7 @@ def _update_task(row):
 
 def sync_meetings(limit=5):
     _require_configured()
-    limit = max(1, min(10, int(limit or 5)))
+    limit = _bounded_int(limit, 5, 1, 10)
     if core.DB_ENABLED:
         rows = core.fetchall(
             "SELECT * FROM plaud_meetings WHERE status='processing' ORDER BY updated_at ASC LIMIT %s",
