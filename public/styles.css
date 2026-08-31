@@ -705,6 +705,8 @@ a { color: inherit; text-decoration: none; }
 }
 
 .plaud-page-heading { align-items: center; }
+.plaud-page-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; flex-wrap: wrap; }
+.plaud-page-actions .button { min-height: 35px; padding: 0 13px; white-space: nowrap; }
 .plaud-connection { display: inline-flex; align-items: center; gap: 8px; min-height: 35px; padding: 0 13px; border: 1px solid #d7e4e0; border-radius: 999px; background: #fff; color: #66736f; font-size: 10px; font-weight: 800; white-space: nowrap; }
 .plaud-connection i { width: 8px; height: 8px; border-radius: 50%; background: #c6cecb; box-shadow: 0 0 0 4px #f0f3f2; }
 .plaud-connection.ready { border-color: #b8ddcf; color: var(--green-800); background: var(--green-50); }
