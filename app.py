@@ -157,6 +157,12 @@ def users_patch(user_id):
     return json_response({"user": core.update_user(str(user_id), payload(), actor, request_ip())})
 
 
+@portal.post("/api/admin/plaud/test")
+def plaud_connection_test():
+    actor = current_user(True)
+    return json_response(plaud.test_connection(actor["id"]))
+
+
 @portal.get("/api/meetings/plaud/config")
 def plaud_config_get():
     current_user()
