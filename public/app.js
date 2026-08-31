@@ -541,7 +541,7 @@ const renderNavigation = () => {
     }
     navigate(id);
   }));
-  $("[data-sub-page]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.subPage)));
+  document.querySelectorAll("[data-sub-page]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.subPage)));
 };
 
 const navigate = (page) => {
