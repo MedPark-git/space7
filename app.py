@@ -6,6 +6,7 @@ from flask import Flask, jsonify, make_response, redirect, request, send_from_di
 from werkzeug.exceptions import HTTPException
 
 import calendar_integration as calendar
+import plaud_integration as plaud
 import portal_core as core
 
 ROOT = Path(__file__).resolve().parent
@@ -154,6 +155,54 @@ def users_post():
 def users_patch(user_id):
     actor = current_user(True)
     return json_response({"user": core.update_user(str(user_id), payload(), actor, request_ip())})
+
+
+@portal.get("/api/meetings/plaud/config")
+def plaud_config_get():
+    current_user()
+    return json_response(plaud.configuration_payload())
+
+
+@portal.get("/api/meetings/plaud/stats")
+def plaud_stats_get():
+    current_user()
+    return json_response(plaud.stats())
+
+
+@portal.get("/api/meetings/plaud")
+def plaud_meetings_get():
+    actor = current_user()
+    return json_response(plaud.list_meetings(
+        actor,
+        request.args.get("query", ""),
+        request.args.get("status", ""),
+        request.args.get("page", 1),
+        request.args.get("page_size", 20),
+    ))
+
+
+@portal.get("/api/meetings/plaud/<uuid:meeting_id>")
+def plaud_meeting_get(meeting_id):
+    actor = current_user()
+    return json_response({"meeting": plaud.get_meeting(str(meeting_id), actor)})
+
+
+@portal.post("/api/meetings/plaud/uploads/start")
+def plaud_upload_start():
+    actor = current_user()
+    return json_response(plaud.start_upload(payload(), actor))
+
+
+@portal.post("/api/meetings/plaud/uploads/complete")
+def plaud_upload_complete():
+    actor = current_user()
+    return json_response({"meeting": plaud.complete_upload(payload(), actor, request_ip())}, 201)
+
+
+@portal.post("/api/meetings/plaud/sync")
+def plaud_sync():
+    current_user()
+    return json_response(plaud.sync_meetings(5))
 
 
 @portal.get("/api/admin/calendar/settings")
