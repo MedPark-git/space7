@@ -66,6 +66,297 @@ const calendarEventCache = new Map();
 const calendarEventRequests = new Map();
 let calendarRenderRequestId = 0;
 
+let plaudPollTimer = null;
+let plaudSelectedFile = null;
+let plaudStatusFilter = "";
+let plaudSearchQuery = "";
+let plaudConfig = null;
+let plaudPageLoading = false;
+
+const plaudRequest = async (url, options = {}) => {
+  const headers = { accept: "application/json", ...(options.headers || {}) };
+  if (options.body && !headers["content-type"]) headers["content-type"] = "application/json";
+  const response = await fetch(url, { ...options, headers });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.message || "요청을 처리하지 못했습니다.");
+  return result;
+};
+
+const formatPlaudFileSize = (bytes) => {
+  const value = Number(bytes || 0);
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`;
+  return `${(value / 1024 ** 3).toFixed(1)} GB`;
+};
+
+const formatPlaudDuration = (seconds) => {
+  const value = Math.max(0, Math.round(Number(seconds || 0)));
+  if (!value) return "-";
+  const hours = Math.floor(value / 3600);
+  const minutes = Math.floor((value % 3600) / 60);
+  const remain = value % 60;
+  return hours ? `${hours}시간 ${minutes}분` : `${minutes}분 ${remain}초`;
+};
+
+const formatPlaudDate = (value) => value
+  ? new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value))
+  : "-";
+
+const plaudStatusMeta = (status) => ({
+  completed: { label: "완료", className: "completed" },
+  processing: { label: "처리 중", className: "processing" },
+  failed: { label: "실패", className: "failed" },
+  uploading: { label: "업로드 중", className: "processing" },
+}[status] || { label: "대기", className: "waiting" });
+
+const updatePlaudProgress = (percent, message, tone = "") => {
+  const host = $("#plaudUploadProgress");
+  if (!host) return;
+  const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent || 0))));
+  host.hidden = false;
+  host.className = `plaud-upload-progress ${tone}`.trim();
+  host.innerHTML = `<div><span>${escapeHtml(message)}</span><b>${safePercent}%</b></div><progress max="100" value="${safePercent}"></progress>`;
+};
+
+const setPlaudFile = (file) => {
+  const summary = $("#plaudFileSummary");
+  const submit = $("#plaudUploadButton");
+  if (!file) {
+    plaudSelectedFile = null;
+    if (summary) summary.innerHTML = "<b>녹음파일을 선택해 주세요.</b><span>MP3 또는 OPUS · 최대 2GB</span>";
+    if (submit) submit.disabled = true;
+    return;
+  }
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  if (!["mp3", "opus"].includes(extension)) {
+    showToast("현재 PLAUD 직접 업로드는 MP3 또는 OPUS 파일만 지원합니다.");
+    setPlaudFile(null);
+    return;
+  }
+  const maxSize = Number(plaudConfig?.max_file_size || 2 * 1024 ** 3);
+  if (!file.size || file.size > maxSize) {
+    showToast("파일 크기는 2GB 이하여야 합니다.");
+    setPlaudFile(null);
+    return;
+  }
+  plaudSelectedFile = file;
+  if (summary) summary.innerHTML = `<b>${escapeHtml(file.name)}</b><span>${formatPlaudFileSize(file.size)} · ${extension.toUpperCase()}</span>`;
+  const titleInput = $("#plaudTitleInput");
+  if (titleInput && !titleInput.value.trim()) titleInput.value = file.name.replace(/\.[^.]+$/, "");
+  if (submit) submit.disabled = !plaudConfig?.configured;
+};
+
+const renderPlaudRows = (items = [], total = 0) => {
+  const body = $("#plaudMeetingRows");
+  const count = $("#plaudBoardCount");
+  if (count) count.textContent = `${Number(total || 0).toLocaleString("ko-KR")}건`;
+  if (!body) return;
+  if (!items.length) {
+    body.innerHTML = '<tr><td colspan="6"><div class="plaud-empty"><i>☷</i><b>등록된 회의록이 없습니다.</b><span>녹음파일을 업로드하면 처리 현황이 이곳에 표시됩니다.</span></div></td></tr>';
+    return;
+  }
+  body.innerHTML = items.map((item) => {
+    const status = plaudStatusMeta(item.status);
+    return `<tr>
+      <td><div class="plaud-masked-title"><b>${escapeHtml(item.masked_title)}</b><small>제목 마스킹 적용</small></div></td>
+      <td><span class="plaud-status ${status.className}"><i></i>${status.label}</span></td>
+      <td>${formatPlaudDuration(item.duration_seconds)}</td>
+      <td>${escapeHtml(item.created_by_name || "임직원")}</td>
+      <td>${formatPlaudDate(item.created_at)}</td>
+      <td><button class="plaud-row-button" data-plaud-detail="${escapeHtml(item.id)}">상세 보기</button></td>
+    </tr>`;
+  }).join("");
+  $('[data-plaud-detail]').forEach((button) => button.addEventListener("click", () => openPlaudMeetingDetail(button.dataset.plaudDetail)));
+};
+
+const renderPlaudStats = (stats = {}) => {
+  const values = {
+    total: stats.total || 0,
+    completed: stats.completed || 0,
+    processing: stats.processing || 0,
+    failed: stats.failed || 0,
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    const host = $(`[data-plaud-stat="${key}"]`);
+    if (host) host.textContent = Number(value).toLocaleString("ko-KR");
+  });
+};
+
+const refreshPlaudPage = async ({ sync = false } = {}) => {
+  if (plaudPageLoading || currentPage !== "meetings_plaud") return;
+  plaudPageLoading = true;
+  try {
+    if (sync && plaudConfig?.configured) await plaudRequest("/api/meetings/plaud/sync", { method: "POST" });
+    const params = new URLSearchParams({ page: "1", page_size: "30" });
+    if (plaudStatusFilter) params.set("status", plaudStatusFilter);
+    if (plaudSearchQuery) params.set("query", plaudSearchQuery);
+    const [stats, list] = await Promise.all([
+      plaudRequest("/api/meetings/plaud/stats"),
+      plaudRequest(`/api/meetings/plaud?${params}`),
+    ]);
+    if (currentPage !== "meetings_plaud") return;
+    renderPlaudStats(stats);
+    renderPlaudRows(list.items || [], list.total || 0);
+  } catch (error) {
+    const body = $("#plaudMeetingRows");
+    if (body) body.innerHTML = `<tr><td colspan="6"><div class="plaud-empty error"><i>!</i><b>회의록을 불러오지 못했습니다.</b><span>${escapeHtml(error.message)}</span></div></td></tr>`;
+  } finally {
+    plaudPageLoading = false;
+  }
+};
+
+const openPlaudMeetingDetail = async (meetingId) => {
+  const dialog = $("#plaudMeetingDialog");
+  const body = $("#plaudMeetingDetailBody");
+  if (!dialog || !body) return;
+  body.innerHTML = '<div class="plaud-detail-loading"><span class="spinner"></span><p>회의록을 불러오는 중입니다.</p></div>';
+  dialog.showModal();
+  try {
+    const result = await plaudRequest(`/api/meetings/plaud/${encodeURIComponent(meetingId)}`);
+    const meeting = result.meeting || {};
+    const status = plaudStatusMeta(meeting.status);
+    const title = meeting.title || meeting.masked_title || "회의록";
+    let content = "";
+    if (meeting.status === "completed" && meeting.segments?.length) {
+      content = `<div class="plaud-transcript-list">${meeting.segments.map((segment) => `<article><header><b>${escapeHtml(segment.speaker_id || segment.speaker || "화자")}</b><span>${formatPlaudDuration(segment.start || 0)}</span></header><p>${escapeHtml(segment.text || "")}</p></article>`).join("")}</div>`;
+    } else if (meeting.status === "completed") {
+      content = `<div class="plaud-transcript-text">${escapeHtml(meeting.transcript || "전사 내용이 없습니다.").replace(/\n/g, "<br>")}</div>`;
+    } else if (meeting.status === "failed") {
+      content = `<div class="plaud-detail-state failed"><i>!</i><b>회의록 생성에 실패했습니다.</b><p>${escapeHtml(meeting.error_message || "관리자에게 문의해 주세요.")}</p></div>`;
+    } else {
+      content = '<div class="plaud-detail-state"><span class="spinner"></span><b>PLAUD가 녹음 내용을 처리하고 있습니다.</b><p>완료되면 회의록 내용이 자동으로 표시됩니다.</p></div>';
+    }
+    body.innerHTML = `<header class="plaud-detail-heading"><div><span class="eyebrow">PLAUD MEETING MINUTES</span><h2>${escapeHtml(title)}</h2><p>${meeting.can_view_title ? "작성자 또는 관리자 권한으로 원문 제목을 표시합니다." : "제목 마스킹이 적용되었습니다."}</p></div><span class="plaud-status ${status.className}"><i></i>${status.label}</span></header>
+      <div class="plaud-detail-meta"><span><b>등록자</b>${escapeHtml(meeting.created_by_name || "임직원")}</span><span><b>등록일</b>${formatPlaudDate(meeting.created_at)}</span><span><b>길이</b>${formatPlaudDuration(meeting.duration_seconds)}</span><span><b>언어</b>${escapeHtml(meeting.language || "자동 감지")}</span></div>
+      <section class="plaud-detail-content"><h3>전사 회의록</h3>${content}</section>`;
+  } catch (error) {
+    body.innerHTML = `<div class="plaud-detail-state failed"><i>!</i><b>회의록을 불러오지 못했습니다.</b><p>${escapeHtml(error.message)}</p></div>`;
+  }
+};
+
+const uploadPlaudMeeting = async () => {
+  const file = plaudSelectedFile;
+  const submit = $("#plaudUploadButton");
+  const title = $("#plaudTitleInput")?.value.trim() || "";
+  if (!file) return showToast("녹음파일을 선택해 주세요.");
+  if (!plaudConfig?.configured) return showToast("PLAUD 인증정보 등록 후 업로드할 수 있습니다.");
+  const fileType = file.name.split(".").pop().toLowerCase();
+  submit.disabled = true;
+  try {
+    updatePlaudProgress(2, "PLAUD 업로드를 준비하고 있습니다.");
+    const upload = await plaudRequest("/api/meetings/plaud/uploads/start", {
+      method: "POST",
+      body: JSON.stringify({ filename: file.name, file_size: file.size, file_type: fileType }),
+    });
+    const partList = [];
+    for (let index = 0; index < upload.parts.length; index += 1) {
+      const part = upload.parts[index];
+      const offset = (Number(part.part_number) - 1) * Number(upload.chunk_size);
+      const chunk = file.slice(offset, Math.min(file.size, offset + Number(upload.chunk_size)));
+      const response = await fetch(part.upload_url, { method: "PUT", body: chunk });
+      if (!response.ok) throw new Error(`파일 ${part.part_number}번 조각 업로드에 실패했습니다.`);
+      const etag = response.headers.get("ETag") || response.headers.get("etag");
+      if (!etag) throw new Error("PLAUD 업로드 확인값을 받지 못했습니다. 브라우저 CORS 설정을 확인해 주세요.");
+      partList.push({ PartNumber: Number(part.part_number), ETag: etag });
+      updatePlaudProgress(5 + ((index + 1) / upload.parts.length) * 82, `녹음파일 업로드 중 · ${index + 1}/${upload.parts.length}`);
+    }
+    updatePlaudProgress(92, "업로드를 완료하고 회의록 생성을 시작합니다.");
+    await plaudRequest("/api/meetings/plaud/uploads/complete", {
+      method: "POST",
+      body: JSON.stringify({
+        file_id: upload.file_id,
+        upload_id: upload.upload_id,
+        part_list: partList,
+        filename: file.name,
+        file_size: file.size,
+        file_type: fileType,
+        title,
+      }),
+    });
+    updatePlaudProgress(100, "업로드가 완료되었습니다. PLAUD에서 회의록을 생성 중입니다.", "success");
+    showToast("녹음파일이 등록되었습니다. 회의록 처리 상태를 자동으로 확인합니다.");
+    $("#plaudTitleInput").value = "";
+    $("#plaudFileInput").value = "";
+    setPlaudFile(null);
+    await refreshPlaudPage();
+  } catch (error) {
+    updatePlaudProgress(100, error.message || "업로드에 실패했습니다.", "failed");
+    showToast(error.message || "PLAUD 업로드에 실패했습니다.");
+  } finally {
+    submit.disabled = !plaudSelectedFile || !plaudConfig?.configured;
+  }
+};
+
+const bindPlaudPage = () => {
+  const zone = $("#plaudDropZone");
+  const input = $("#plaudFileInput");
+  const choose = $("#plaudChooseFile");
+  choose.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => setPlaudFile(input.files?.[0] || null));
+  ["dragenter", "dragover"].forEach((name) => zone.addEventListener(name, (event) => { event.preventDefault(); zone.classList.add("dragging"); }));
+  ["dragleave", "drop"].forEach((name) => zone.addEventListener(name, (event) => { event.preventDefault(); zone.classList.remove("dragging"); }));
+  zone.addEventListener("drop", (event) => setPlaudFile(event.dataTransfer?.files?.[0] || null));
+  $("#plaudUploadButton").addEventListener("click", uploadPlaudMeeting);
+  $("#plaudMeetingDialogClose").addEventListener("click", () => $("#plaudMeetingDialog").close());
+  let searchTimer;
+  $("#plaudSearch").addEventListener("input", (event) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { plaudSearchQuery = event.target.value.trim(); refreshPlaudPage(); }, 250);
+  });
+  $('[data-plaud-filter]').forEach((button) => button.addEventListener("click", () => {
+    plaudStatusFilter = button.dataset.plaudFilter;
+    $('[data-plaud-filter]').forEach((item) => item.classList.toggle("active", item === button));
+    refreshPlaudPage();
+  }));
+};
+
+const renderPlaudMeetingPage = async () => {
+  plaudSelectedFile = null;
+  plaudStatusFilter = "";
+  plaudSearchQuery = "";
+  pageContent.innerHTML = `
+    <section class="page-heading plaud-page-heading"><div><span class="eyebrow">COLLABORATION · PLAUD</span><h1>회의록_Plaud</h1><p>녹음파일을 업로드하고 PLAUD 전사 처리 현황과 회의록을 한곳에서 관리합니다.</p></div><span id="plaudConnectionBadge" class="plaud-connection waiting"><i></i>PLAUD 연결 확인 중</span></section>
+    <section class="plaud-stat-grid">
+      <article><span>총 회의록</span><strong data-plaud-stat="total">0</strong><small>누적 등록 건수</small></article>
+      <article><span>완료</span><strong data-plaud-stat="completed">0</strong><small>회의록 생성 완료</small></article>
+      <article><span>처리 중</span><strong data-plaud-stat="processing">0</strong><small>PLAUD 분석 진행</small></article>
+      <article><span>실패</span><strong data-plaud-stat="failed">0</strong><small>재확인 필요</small></article>
+    </section>
+    <section class="content-panel plaud-upload-panel">
+      <header class="plaud-section-heading"><div><span class="eyebrow">NEW RECORDING</span><h2>녹음파일 업로드</h2><p>제목은 게시판에서 기본적으로 마스킹되며 작성자와 관리자만 상세 화면에서 원문을 확인할 수 있습니다.</p></div></header>
+      <label class="plaud-title-field">회의 제목 <span>선택 입력</span><input id="plaudTitleInput" maxlength="200" placeholder="입력하지 않으면 파일명으로 생성됩니다." /></label>
+      <div id="plaudDropZone" class="plaud-drop-zone">
+        <input id="plaudFileInput" type="file" accept=".mp3,.opus,audio/mpeg,audio/ogg" hidden />
+        <div class="plaud-upload-icon">＋</div>
+        <div id="plaudFileSummary"><b>녹음파일을 여기에 놓아주세요.</b><span>또는 아래 버튼에서 파일을 선택하세요 · MP3/OPUS · 최대 2GB</span></div>
+        <button id="plaudChooseFile" type="button" class="button secondary">녹음파일 선택</button>
+      </div>
+      <div id="plaudUploadProgress" class="plaud-upload-progress" hidden></div>
+      <footer class="plaud-upload-actions"><span>파일은 앱 서버에 저장하지 않고 PLAUD로 분할 전송됩니다.</span><button id="plaudUploadButton" type="button" class="button primary" disabled>PLAUD 회의록 만들기</button></footer>
+    </section>
+    <section class="content-panel plaud-board-panel">
+      <header class="plaud-board-header"><div><span class="eyebrow">MEETING BOARD</span><h2>회의록 게시판 <small id="plaudBoardCount">0건</small></h2></div><div class="plaud-board-tools"><input id="plaudSearch" placeholder="회의 제목 검색" /><div class="plaud-filter-buttons"><button class="active" data-plaud-filter="">전체</button><button data-plaud-filter="completed">완료</button><button data-plaud-filter="processing">처리 중</button><button data-plaud-filter="failed">실패</button></div></div></header>
+      <div class="plaud-table-wrap"><table class="data-table plaud-table"><thead><tr><th>제목</th><th>상태</th><th>녹음 길이</th><th>등록자</th><th>등록일</th><th></th></tr></thead><tbody id="plaudMeetingRows"><tr><td colspan="6"><div class="plaud-empty"><span class="spinner"></span><b>회의록을 불러오는 중입니다.</b></div></td></tr></tbody></table></div>
+    </section>
+    <dialog id="plaudMeetingDialog" class="plaud-meeting-dialog"><button id="plaudMeetingDialogClose" class="plaud-dialog-close" aria-label="닫기">×</button><div id="plaudMeetingDetailBody"></div></dialog>`;
+  bindPlaudPage();
+  try {
+    plaudConfig = await plaudRequest("/api/meetings/plaud/config");
+    if (currentPage !== "meetings_plaud") return;
+    const badge = $("#plaudConnectionBadge");
+    badge.className = `plaud-connection ${plaudConfig.configured ? "ready" : "waiting"}`;
+    badge.innerHTML = `<i></i>${plaudConfig.configured ? "PLAUD 연결 준비됨" : "PLAUD 연결 대기"}`;
+    $("#plaudFileInput").disabled = !plaudConfig.configured;
+    $("#plaudChooseFile").disabled = !plaudConfig.configured;
+  } catch (error) {
+    showToast(error.message || "PLAUD 연결 상태를 확인하지 못했습니다.");
+  }
+  await refreshPlaudPage({ sync: Boolean(plaudConfig?.configured) });
+  plaudPollTimer = setInterval(() => refreshPlaudPage({ sync: true }), 15000);
+};
+
+
 const builtInEditableMenuIds = new Set([
   "group_workspace", "group_business", "group_collaboration",
   "management", "management_ar", "management_hr", "management_routine",
@@ -215,6 +506,8 @@ $("#logout").addEventListener("click", async () => {
   sessionStorage.removeItem("medpark-preview-session");
   currentUser = null;
   clearInterval(carouselTimer);
+  clearInterval(plaudPollTimer);
+  plaudPollTimer = null;
   appView.hidden = true;
   guestView.hidden = false;
   loginForm.reset();
@@ -229,12 +522,12 @@ const renderNavigation = () => {
         const hasChildren = Boolean(item.children?.length);
         if (item.url && !hasChildren) return `<a class="nav-item" href="${escapeHtml(item.url)}"${linkAttributes(item.url)}><span class="nav-icon">${escapeHtml(item.icon || "◇")}</span><span>${escapeHtml(item.title)}</span><span class="chevron">${linkIndicator(item.url)}</span></a>`;
         return `
-        <button class="nav-item ${item.id === currentPage ? "active" : ""}" data-nav="${escapeHtml(item.id)}" data-has-children="${hasChildren}">
+        <button class="nav-item ${item.id === currentPage || item.children?.some((child) => child.id === currentPage) ? "active expanded" : ""}" data-nav="${escapeHtml(item.id)}" data-has-children="${hasChildren}">
           <span class="nav-icon">${escapeHtml(item.icon || "◇")}</span><span>${escapeHtml(item.title)}</span>${hasChildren ? '<span class="chevron">›</span>' : ""}
         </button>
-        ${hasChildren ? `<div class="submenu" data-submenu="${escapeHtml(item.id)}"><div>${item.children.map((child) => child.url
+        ${hasChildren ? `<div class="submenu ${item.children?.some((child) => child.id === currentPage) ? "open" : ""}" data-submenu="${escapeHtml(item.id)}"><div>${item.children.map((child) => child.url
           ? `<a data-external="${escapeHtml(child.title)}" data-url="${escapeHtml(child.url)}" href="${escapeHtml(child.url)}"${linkAttributes(child.url)}>${escapeHtml(child.title)}<span style="float:right">${linkIndicator(child.url)}</span></a>`
-          : `<button data-external="${escapeHtml(child.title)}">${escapeHtml(child.title)}<span style="float:right">·</span></button>`).join("")}</div></div>` : ""}
+          : `<button data-sub-page="${escapeHtml(child.id)}">${escapeHtml(child.title)}<span style="float:right">→</span></button>`).join("")}</div></div>` : ""}
       `}).join("")}
     </section>
   `).join("");
@@ -248,7 +541,7 @@ const renderNavigation = () => {
     }
     navigate(id);
   }));
-  $$('button[data-external]').forEach((button) => button.addEventListener("click", () => showToast(`${button.dataset.external} 링크는 추후 연결할 예정입니다.`)));
+  $("[data-sub-page]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.subPage)));
 };
 
 const navigate = (page) => {
@@ -258,16 +551,19 @@ const navigate = (page) => {
   }
   currentPage = page;
   clearInterval(carouselTimer);
+  clearInterval(plaudPollTimer);
+  plaudPollTimer = null;
   pageContent.classList.toggle("dashboard-page", page === "dashboard");
   pageContent.classList.toggle("calendar-page", ["calendar", "admin_calendar"].includes(page));
   renderNavigation();
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.nav === page));
-  const title = menuGroups.flatMap((g) => g.items).find((item) => item.id === page)?.title || "통합 대시보드";
+  const title = menuGroups.flatMap((group) => group.items.flatMap((item) => [item, ...(item.children || [])])).find((item) => item.id === page)?.title || "통합 대시보드";
   $("#breadcrumbText").textContent = title;
   if (page === "dashboard") renderDashboard();
   else if (page === "admin") renderAdmin();
   else if (page === "admin_calendar") renderCalendarSettings();
   else if (page === "calendar") renderCalendarPage();
+  else if (page === "meetings_plaud") renderPlaudMeetingPage();
   else renderPlaceholder(title, page);
   closeSidebar();
 };
