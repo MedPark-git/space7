@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import os
 import re
 import threading
@@ -11,6 +12,9 @@ from urllib import parse as urlparse
 from urllib import request as urlrequest
 
 import portal_core as core
+
+
+logger = logging.getLogger("medpark.plaud")
 
 
 ALLOWED_FILE_TYPES = {"mp3", "opus"}
@@ -51,10 +55,20 @@ def configuration_payload():
         "supported_file_types": sorted(ALLOWED_FILE_TYPES),
         "max_file_size": MAX_FILE_SIZE,
         "chunk_upload": True,
+        "connection_test_available": True,
     }
 
 
-def _http_json(method, path, *, headers=None, payload=None, form=None, timeout=20):
+def _safe_upstream_message(raw, fallback):
+    try:
+        details = json.loads(raw)
+        message = details.get("message") or details.get("detail") or details.get("error") or fallback
+    except (ValueError, AttributeError, TypeError):
+        message = raw or fallback
+    return re.sub(r"\s+", " ", str(message)).strip()[:180]
+
+
+def _http_json(method, path, *, headers=None, payload=None, form=None, timeout=20, stage="PLAUD API"):
     credentials = _credentials()
     body = None
     request_headers = {"Accept": "application/json", **(headers or {})}
@@ -69,22 +83,28 @@ def _http_json(method, path, *, headers=None, payload=None, form=None, timeout=2
     req = urlrequest.Request(
         f"{credentials['host']}{path}", data=body, headers=request_headers, method=method.upper()
     )
+    logger.info("PLAUD request started stage=%s method=%s path=%s", stage, method.upper(), path)
     try:
         with urlrequest.urlopen(req, timeout=timeout) as response:
             raw = response.read().decode("utf-8")
+            logger.info("PLAUD request completed stage=%s status=%s", stage, getattr(response, "status", 200))
             return json.loads(raw) if raw else {}
     except urlerror.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")
-        try:
-            details = json.loads(raw)
-            message = details.get("message") or details.get("detail") or details.get("error") or raw
-        except (ValueError, AttributeError):
-            message = raw
-        safe_message = str(message or f"HTTP {exc.code}")[:300]
-        raise core.AppError(f"PLAUD API 요청에 실패했습니다. ({safe_message})", 502) from exc
+        detail = _safe_upstream_message(raw, f"HTTP {exc.code}")
+        logger.warning("PLAUD request rejected stage=%s status=%s detail=%s", stage, exc.code, detail)
+        if exc.code in {401, 403}:
+            message = f"{stage}: PLAUD 인증이 거부되었습니다. Client ID, Client Secret 또는 API Key를 확인해 주세요."
+        elif exc.code == 429:
+            message = f"{stage}: PLAUD API 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요."
+        elif exc.code >= 500:
+            message = f"{stage}: PLAUD 서비스에서 일시적인 오류가 발생했습니다."
+        else:
+            message = f"{stage}: PLAUD 요청이 거부되었습니다. ({detail})"
+        raise core.AppError(message, 502) from exc
     except (urlerror.URLError, TimeoutError) as exc:
-        raise core.AppError("PLAUD 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.", 503) from exc
-
+        logger.warning("PLAUD connection failed stage=%s error=%s", stage, type(exc).__name__)
+        raise core.AppError(f"{stage}: PLAUD 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.", 503) from exc
 
 def _require_configured():
     if not configured():
@@ -105,6 +125,7 @@ def _partner_token():
             "/developer/api/oauth/partner/access-token",
             headers={"Authorization": f"Basic {encoded}"},
             form={},
+            stage="1/3 Partner Token 인증",
         )
         access_token = result.get("access_token")
         if not access_token:
@@ -127,6 +148,7 @@ def _user_token(user_id):
         "/developer/api/open/partner/users/access-token",
         headers={"Authorization": f"Bearer {partner_token}"},
         payload={"user_id": stable_user_id, "expires_in": 86400},
+        stage="2/3 User Token 인증",
     )
     access_token = result.get("access_token")
     if not access_token:
@@ -135,6 +157,60 @@ def _user_token(user_id):
     with _token_lock:
         _token_cache["users"][stable_user_id] = {"access_token": access_token, "expires_at": now + expires_in}
     return access_token
+
+
+def _test_transcription_credentials():
+    credentials = _credentials()
+    test_id = "task_exec_medpark_connection_test"
+    path = f"/developer/api/open/partner/ai/transcriptions/{test_id}"
+    req = urlrequest.Request(
+        f"{credentials['host']}{path}",
+        headers={
+            "Accept": "application/json",
+            "X-Client-Id": credentials["client_id"],
+            "X-Client-Api-Key": credentials["api_key"],
+        },
+        method="GET",
+    )
+    logger.info("PLAUD authentication probe started stage=3/3 Transcription API")
+    try:
+        with urlrequest.urlopen(req, timeout=12) as response:
+            response.read()
+            logger.info("PLAUD authentication probe completed status=%s", getattr(response, "status", 200))
+    except urlerror.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        detail = _safe_upstream_message(raw, f"HTTP {exc.code}")
+        if exc.code in {400, 404, 422}:
+            logger.info("PLAUD authentication probe accepted credentials status=%s", exc.code)
+            return
+        logger.warning("PLAUD authentication probe failed status=%s detail=%s", exc.code, detail)
+        if exc.code in {401, 403}:
+            raise core.AppError("3/3 Transcription API 인증: PLAUD API Key가 거부되었습니다.", 502) from exc
+        if exc.code == 429:
+            raise core.AppError("3/3 Transcription API 인증: PLAUD API 호출 한도에 도달했습니다.", 502) from exc
+        raise core.AppError(f"3/3 Transcription API 인증: PLAUD 응답을 확인하지 못했습니다. ({detail})", 502) from exc
+    except (urlerror.URLError, TimeoutError) as exc:
+        logger.warning("PLAUD authentication probe connection failed error=%s", type(exc).__name__)
+        raise core.AppError("3/3 Transcription API 인증: PLAUD 서비스에 연결할 수 없습니다.", 503) from exc
+
+
+def test_connection(user_id):
+    _require_configured()
+    logger.info("PLAUD connection test started user_id=%s", str(user_id))
+    _partner_token()
+    _user_token(user_id)
+    _test_transcription_credentials()
+    checked_at = datetime.now(timezone.utc).isoformat()
+    logger.info("PLAUD connection test completed user_id=%s", str(user_id))
+    return {
+        "connected": True,
+        "provider": "PLAUD",
+        "partner_token": "verified",
+        "user_token": "verified",
+        "transcription_api": "verified",
+        "checked_at": checked_at,
+        "message": "PLAUD Partner Token, User Token 및 Transcription API 인증이 정상입니다.",
+    }
 
 
 def _clean_filename(filename):
@@ -186,12 +262,14 @@ def start_upload(data, user):
         raise core.AppError("녹음파일 크기를 확인할 수 없습니다.")
     if file_size > MAX_FILE_SIZE:
         raise core.AppError("녹음파일은 최대 2GB까지 업로드할 수 있습니다.")
+    logger.info("PLAUD upload start user_id=%s file_type=%s file_size=%s", str(user["id"]), file_type, file_size)
     token = _user_token(user["id"])
     result = _http_json(
         "POST",
         "/developer/api/open/partner/files/upload/generate-presigned-urls",
         headers={"Authorization": f"Bearer {token}"},
         payload={"filesize": file_size, "filetype": file_type},
+        stage="1/5 업로드 인증 및 주소 발급",
     )
     file_id = result.get("FileId") or result.get("file_id")
     upload_id = result.get("UploadId") or result.get("upload_id")
@@ -263,6 +341,7 @@ def complete_upload(data, user, ip=None):
         "/developer/api/open/partner/files/upload/complete-upload",
         headers={"Authorization": f"Bearer {token}"},
         payload={"file_id": file_id, "upload_id": upload_id, "part_list": normalized_parts, "filetype": file_type},
+        stage="3/5 업로드 파일 결합",
     )
     download_url = complete_result.get("DownloadUrl") or complete_result.get("download_url")
     if not download_url:
@@ -280,6 +359,7 @@ def complete_upload(data, user, ip=None):
                 "diarization": {"enabled": True, "return_embedding": False},
             },
         },
+        stage="4/5 PLAUD 전사 작업 생성",
     )
     transcription_id = transcription.get("transcription_id")
     plaud_status = str(transcription.get("status") or "PENDING").upper()
@@ -289,19 +369,29 @@ def complete_upload(data, user, ip=None):
         file_size = max(0, int(data.get("file_size") or 0))
     except (TypeError, ValueError):
         file_size = 0
-    row = _create_meeting({
-        "created_by": str(user["id"]),
-        "title": _title(data.get("title"), filename),
-        "source_filename": filename,
-        "file_size": file_size,
-        "file_type": file_type,
-        "plaud_file_id": file_id,
-        "plaud_transcription_id": transcription_id,
-        "status": "processing",
-        "plaud_status": plaud_status,
-        "created_by_name": user.get("name") or user.get("username") or "임직원",
-    })
-    core.write_audit(user["id"], "plaud.meeting.create", "plaud_meeting", str(row["id"]), {"status": "processing"}, ip)
+    try:
+        row = _create_meeting({
+            "created_by": str(user["id"]),
+            "title": _title(data.get("title"), filename),
+            "source_filename": filename,
+            "file_size": file_size,
+            "file_type": file_type,
+            "plaud_file_id": file_id,
+            "plaud_transcription_id": transcription_id,
+            "status": "processing",
+            "plaud_status": plaud_status,
+            "created_by_name": user.get("name") or user.get("username") or "임직원",
+        })
+    except core.AppError:
+        raise
+    except Exception as exc:
+        logger.exception("PLAUD meeting DB insert failed user_id=%s transcription_id=%s", str(user["id"]), transcription_id)
+        raise core.AppError("5/5 회의록 DB 저장 단계에서 오류가 발생했습니다. 관리자에게 문의해 주세요.", 500) from exc
+    try:
+        core.write_audit(user["id"], "plaud.meeting.create", "plaud_meeting", str(row["id"]), {"status": "processing"}, ip)
+    except Exception:
+        logger.exception("PLAUD audit log write failed meeting_id=%s", str(row["id"]))
+    logger.info("PLAUD upload workflow completed meeting_id=%s transcription_id=%s", str(row["id"]), transcription_id)
     return public_meeting(row, user)
 
 
@@ -362,15 +452,19 @@ def list_meetings(actor, query="", status="", page=1, page_size=20):
         total = len(rows)
         rows = rows[(page - 1) * page_size:page * page_size]
     else:
-        where, params = _where_clause(query, status)
-        count = core.fetchone(f"SELECT count(*) AS count FROM plaud_meetings m{where}", tuple(params)) or {"count": 0}
-        total = int(count["count"])
-        rows = core.fetchall(
-            f"""SELECT m.*, COALESCE(u.name,u.username,'임직원') AS created_by_name
-                FROM plaud_meetings m LEFT JOIN users u ON u.id=m.created_by
-                {where} ORDER BY m.created_at DESC LIMIT %s OFFSET %s""",
-            tuple(params + [page_size, (page - 1) * page_size]),
-        )
+        try:
+            where, params = _where_clause(query, status)
+            count = core.fetchone(f"SELECT count(*) AS count FROM plaud_meetings m{where}", tuple(params)) or {"count": 0}
+            total = int(count["count"])
+            rows = core.fetchall(
+                f"""SELECT m.*, COALESCE(u.name,u.username,'임직원') AS created_by_name
+                    FROM plaud_meetings m LEFT JOIN users u ON u.id=m.created_by
+                    {where} ORDER BY m.created_at DESC LIMIT %s OFFSET %s""",
+                tuple(params + [page_size, (page - 1) * page_size]),
+            )
+        except Exception as exc:
+            logger.exception("PLAUD meeting list DB query failed")
+            raise core.AppError("회의록 DB 조회 단계에서 오류가 발생했습니다. 스키마 상태를 확인해 주세요.", 500) from exc
     return {"items": [public_meeting(row, actor) for row in rows], "total": total, "page": page, "page_size": page_size}
 
 
@@ -379,15 +473,18 @@ def stats():
         values = list(_memory_meetings.values())
         counts = {key: sum(1 for row in values if row.get("status") == key) for key in ("completed", "processing", "failed")}
         return {"total": len(values), **counts}
-    row = core.fetchone(
-        """SELECT count(*) AS total,
-                  count(*) FILTER (WHERE status='completed') AS completed,
-                  count(*) FILTER (WHERE status='processing') AS processing,
-                  count(*) FILTER (WHERE status='failed') AS failed
-           FROM plaud_meetings"""
-    ) or {}
-    return {key: int(row.get(key) or 0) for key in ("total", "completed", "processing", "failed")}
-
+    try:
+        row = core.fetchone(
+            """SELECT count(*) AS total,
+                      count(*) FILTER (WHERE status='completed') AS completed,
+                      count(*) FILTER (WHERE status='processing') AS processing,
+                      count(*) FILTER (WHERE status='failed') AS failed
+               FROM plaud_meetings"""
+        ) or {}
+        return {key: int(row.get(key) or 0) for key in ("total", "completed", "processing", "failed")}
+    except Exception as exc:
+        logger.exception("PLAUD meeting stats DB query failed")
+        raise core.AppError("회의록 통계 DB 조회 단계에서 오류가 발생했습니다. 스키마 상태를 확인해 주세요.", 500) from exc
 
 def _find_meeting(meeting_id):
     if not core.DB_ENABLED:
@@ -412,6 +509,7 @@ def _update_task(row):
         "GET",
         f"/developer/api/open/partner/ai/transcriptions/{urlparse.quote(str(row['plaud_transcription_id']))}",
         headers={"X-Client-Id": credentials["client_id"], "X-Client-Api-Key": credentials["api_key"]},
+        stage="PLAUD 전사 상태 동기화",
     )
     plaud_status = str(result.get("status") or "PENDING").upper()
     status = "processing"
@@ -470,6 +568,10 @@ def sync_meetings(limit=5):
         try:
             _update_task(row)
             synced += 1
-        except core.AppError:
+        except core.AppError as exc:
+            logger.warning("PLAUD transcription sync skipped meeting_id=%s error=%s", str(row.get("id")), str(exc))
+            continue
+        except Exception:
+            logger.exception("PLAUD transcription sync failed meeting_id=%s", str(row.get("id")))
             continue
     return {"synced": synced, "remaining": stats()["processing"]}
