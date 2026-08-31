@@ -76,9 +76,16 @@ let plaudPageLoading = false;
 const plaudRequest = async (url, options = {}) => {
   const headers = { accept: "application/json", ...(options.headers || {}) };
   if (options.body && !headers["content-type"]) headers["content-type"] = "application/json";
-  const response = await fetch(url, { ...options, headers });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.message || "요청을 처리하지 못했습니다.");
+  let response;
+  try {
+    response = await fetch(url, { ...options, headers });
+  } catch {
+    throw new Error("서버에 연결할 수 없습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.");
+  }
+  const raw = await response.text();
+  let result = {};
+  try { result = raw ? JSON.parse(raw) : {}; } catch {}
+  if (!response.ok) throw new Error(result.message || `서버 요청에 실패했습니다. (HTTP ${response.status})`);
   return result;
 };
 
@@ -244,7 +251,7 @@ const uploadPlaudMeeting = async () => {
   const fileType = file.name.split(".").pop().toLowerCase();
   submit.disabled = true;
   try {
-    updatePlaudProgress(2, "PLAUD 업로드를 준비하고 있습니다.");
+    updatePlaudProgress(2, "1/5 PLAUD 인증 및 업로드 주소를 요청하고 있습니다.");
     const upload = await plaudRequest("/api/meetings/plaud/uploads/start", {
       method: "POST",
       body: JSON.stringify({ filename: file.name, file_size: file.size, file_type: fileType }),
@@ -254,14 +261,19 @@ const uploadPlaudMeeting = async () => {
       const part = upload.parts[index];
       const offset = (Number(part.part_number) - 1) * Number(upload.chunk_size);
       const chunk = file.slice(offset, Math.min(file.size, offset + Number(upload.chunk_size)));
-      const response = await fetch(part.upload_url, { method: "PUT", body: chunk });
-      if (!response.ok) throw new Error(`파일 ${part.part_number}번 조각 업로드에 실패했습니다.`);
+      let response;
+      try {
+        response = await fetch(part.upload_url, { method: "PUT", body: chunk });
+      } catch {
+        throw new Error(`2/5 파일 전송: ${part.part_number}번 조각을 PLAUD 저장소로 전송하지 못했습니다. 브라우저 CORS 또는 네트워크 상태를 확인해 주세요.`);
+      }
+      if (!response.ok) throw new Error(`2/5 파일 전송: ${part.part_number}번 조각 업로드가 거부되었습니다. (HTTP ${response.status})`);
       const etag = response.headers.get("ETag") || response.headers.get("etag");
-      if (!etag) throw new Error("PLAUD 업로드 확인값을 받지 못했습니다. 브라우저 CORS 설정을 확인해 주세요.");
+      if (!etag) throw new Error("2/5 파일 전송: PLAUD 업로드 확인값(ETag)을 받지 못했습니다. 브라우저 CORS 설정을 확인해 주세요.");
       partList.push({ PartNumber: Number(part.part_number), ETag: etag });
-      updatePlaudProgress(5 + ((index + 1) / upload.parts.length) * 82, `녹음파일 업로드 중 · ${index + 1}/${upload.parts.length}`);
+      updatePlaudProgress(5 + ((index + 1) / upload.parts.length) * 82, `2/5 녹음파일 전송 중 · ${index + 1}/${upload.parts.length}`);
     }
-    updatePlaudProgress(92, "업로드를 완료하고 회의록 생성을 시작합니다.");
+    updatePlaudProgress(92, "3/5 파일 결합 · 4/5 전사 작업 생성 · 5/5 DB 저장을 진행합니다.");
     await plaudRequest("/api/meetings/plaud/uploads/complete", {
       method: "POST",
       body: JSON.stringify({
@@ -288,6 +300,36 @@ const uploadPlaudMeeting = async () => {
   }
 };
 
+const testPlaudConnection = async () => {
+  const button = $("#plaudTestConnection");
+  const badge = $("#plaudConnectionBadge");
+  if (button) button.disabled = true;
+  if (badge) {
+    badge.className = "plaud-connection waiting";
+    badge.innerHTML = "<i></i>PLAUD 실제 인증 확인 중";
+  }
+  try {
+    const result = await plaudRequest("/api/admin/plaud/test", { method: "POST" });
+    plaudConfig = { ...(plaudConfig || {}), configured: true, verified: true };
+    if (badge) {
+      badge.className = "plaud-connection ready";
+      badge.innerHTML = "<i></i>PLAUD 연결 확인 완료";
+    }
+    showToast(result.message || "PLAUD 실제 인증이 정상입니다.");
+    return true;
+  } catch (error) {
+    plaudConfig = { ...(plaudConfig || {}), verified: false };
+    if (badge) {
+      badge.className = "plaud-connection waiting";
+      badge.innerHTML = "<i></i>PLAUD 연결 테스트 실패";
+    }
+    showToast(error.message || "PLAUD 실제 인증 테스트에 실패했습니다.");
+    return false;
+  } finally {
+    if (button) button.disabled = false;
+  }
+};
+
 const bindPlaudPage = () => {
   const zone = $("#plaudDropZone");
   const input = $("#plaudFileInput");
@@ -298,6 +340,7 @@ const bindPlaudPage = () => {
   ["dragleave", "drop"].forEach((name) => zone.addEventListener(name, (event) => { event.preventDefault(); zone.classList.remove("dragging"); }));
   zone.addEventListener("drop", (event) => setPlaudFile(event.dataTransfer?.files?.[0] || null));
   $("#plaudUploadButton").addEventListener("click", uploadPlaudMeeting);
+  $("#plaudTestConnection")?.addEventListener("click", testPlaudConnection);
   $("#plaudMeetingDialogClose").addEventListener("click", () => $("#plaudMeetingDialog").close());
   let searchTimer;
   $("#plaudSearch").addEventListener("input", (event) => {
@@ -316,7 +359,7 @@ const renderPlaudMeetingPage = async () => {
   plaudStatusFilter = "";
   plaudSearchQuery = "";
   pageContent.innerHTML = `
-    <section class="page-heading plaud-page-heading"><div><span class="eyebrow">COLLABORATION · PLAUD</span><h1>회의록_Plaud</h1><p>녹음파일을 업로드하고 PLAUD 전사 처리 현황과 회의록을 한곳에서 관리합니다.</p></div><span id="plaudConnectionBadge" class="plaud-connection waiting"><i></i>PLAUD 연결 확인 중</span></section>
+    <section class="page-heading plaud-page-heading"><div><span class="eyebrow">COLLABORATION · PLAUD</span><h1>회의록_Plaud</h1><p>녹음파일을 업로드하고 PLAUD 전사 처리 현황과 회의록을 한곳에서 관리합니다.</p></div><div class="plaud-page-actions"><span id="plaudConnectionBadge" class="plaud-connection waiting"><i></i>PLAUD 연결 확인 중</span>${currentUser?.role === "admin" ? `<button id="plaudTestConnection" type="button" class="button secondary">실제 연결 테스트</button>` : ""}</div></section>
     <section class="plaud-stat-grid">
       <article><span>총 회의록</span><strong data-plaud-stat="total">0</strong><small>누적 등록 건수</small></article>
       <article><span>완료</span><strong data-plaud-stat="completed">0</strong><small>회의록 생성 완료</small></article>
@@ -346,7 +389,7 @@ const renderPlaudMeetingPage = async () => {
     if (currentPage !== "meetings_plaud") return;
     const badge = $("#plaudConnectionBadge");
     badge.className = `plaud-connection ${plaudConfig.configured ? "ready" : "waiting"}`;
-    badge.innerHTML = `<i></i>${plaudConfig.configured ? "PLAUD 연결 준비됨" : "PLAUD 연결 대기"}`;
+    badge.innerHTML = `<i></i>${plaudConfig.configured ? "PLAUD 인증정보 등록됨" : "PLAUD 연결 대기"}`;
     $("#plaudFileInput").disabled = !plaudConfig.configured;
     $("#plaudChooseFile").disabled = !plaudConfig.configured;
   } catch (error) {
