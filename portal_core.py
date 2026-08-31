@@ -241,8 +241,27 @@ CREATE TABLE IF NOT EXISTS plaud_meetings (
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
   completed_at timestamptz
 );
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS title varchar(200);
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS source_filename varchar(255);
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS file_size bigint NOT NULL DEFAULT 0;
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS file_type varchar(12);
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS plaud_file_id text;
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS plaud_transcription_id text;
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS status varchar(20) NOT NULL DEFAULT 'processing';
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS plaud_status varchar(30);
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS language varchar(30);
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS duration_seconds numeric;
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS transcript text;
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS transcript_segments jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS error_message text;
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE plaud_meetings ADD COLUMN IF NOT EXISTS completed_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_plaud_meetings_created_at ON plaud_meetings (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_plaud_meetings_status ON plaud_meetings (status, updated_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_plaud_meetings_transcription_id
+  ON plaud_meetings (plaud_transcription_id) WHERE plaud_transcription_id IS NOT NULL;
 """
 
 
@@ -252,15 +271,29 @@ def _set_database_state(**values):
 
 
 def _database_admin_is_ready():
-    """Reconcile per-worker readiness with the shared PostgreSQL state."""
+    """Confirm the shared PostgreSQL schema and administrator are fully ready."""
     if not DB_ENABLED:
         return True
+    required_plaud_columns = {
+        "id", "created_by", "title", "source_filename", "file_size", "file_type",
+        "plaud_file_id", "plaud_transcription_id", "status", "plaud_status",
+        "language", "duration_seconds", "transcript", "transcript_segments",
+        "error_message", "created_at", "updated_at", "completed_at",
+    }
     try:
         with connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SET LOCAL statement_timeout = '3000ms'")
-                cur.execute("SELECT to_regclass('public.users')")
-                if cur.fetchone()[0] is None:
+                cur.execute("SELECT to_regclass('public.users'), to_regclass('public.plaud_meetings')")
+                users_table, plaud_table = cur.fetchone()
+                if users_table is None or plaud_table is None:
+                    return False
+                cur.execute(
+                    """SELECT column_name FROM information_schema.columns
+                       WHERE table_schema='public' AND table_name='plaud_meetings'"""
+                )
+                plaud_columns = {row[0] for row in cur.fetchall()}
+                if not required_plaud_columns.issubset(plaud_columns):
                     return False
                 cur.execute("SELECT EXISTS(SELECT 1 FROM users WHERE status='active' AND role='admin')")
                 return bool(cur.fetchone()[0])
@@ -275,7 +308,8 @@ def database_status():
     # Gunicorn workers do not share Python memory. A worker that is waiting for
     # the initialization lock must still become ready when another worker has
     # already completed the shared PostgreSQL schema and administrator setup.
-    if DB_ENABLED and state["state"] != "ready" and _database_admin_is_ready():
+    schema_ready = _database_admin_is_ready() if DB_ENABLED else True
+    if DB_ENABLED and state["state"] != "ready" and schema_ready:
         _set_database_state(
             state="ready",
             admin_ready=True,
@@ -290,15 +324,18 @@ def database_status():
         "database_attempts": state["attempts"],
         "admin_ready": state["admin_ready"],
         "setup_required": state["setup_required"],
+        "plaud_schema_ready": schema_ready,
     }
 
 
 def ensure_database_ready():
     state = database_status()
-    if state["database_state"] == "ready":
+    if state["database_state"] == "ready" and state.get("plaud_schema_ready", True):
         return
     if state["setup_required"]:
         raise AppError("초기 관리자 비밀번호 설정이 필요합니다.", 503)
+    if not state.get("plaud_schema_ready", True):
+        raise AppError("회의록 데이터베이스 스키마를 보정하는 중입니다. 잠시 후 다시 시도해 주세요.", 503)
     raise AppError("데이터베이스 초기화 중입니다. 잠시 후 다시 시도해 주세요.", 503)
 
 
