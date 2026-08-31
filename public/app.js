@@ -167,7 +167,7 @@ const renderPlaudRows = (items = [], total = 0) => {
       <td><button class="plaud-row-button" data-plaud-detail="${escapeHtml(item.id)}">상세 보기</button></td>
     </tr>`;
   }).join("");
-  $('[data-plaud-detail]').forEach((button) => button.addEventListener("click", () => openPlaudMeetingDetail(button.dataset.plaudDetail)));
+  document.querySelectorAll('[data-plaud-detail]').forEach((button) => button.addEventListener("click", () => openPlaudMeetingDetail(button.dataset.plaudDetail)));
 };
 
 const renderPlaudStats = (stats = {}) => {
@@ -304,9 +304,9 @@ const bindPlaudPage = () => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => { plaudSearchQuery = event.target.value.trim(); refreshPlaudPage(); }, 250);
   });
-  $('[data-plaud-filter]').forEach((button) => button.addEventListener("click", () => {
+  document.querySelectorAll('[data-plaud-filter]').forEach((button) => button.addEventListener("click", () => {
     plaudStatusFilter = button.dataset.plaudFilter;
-    $('[data-plaud-filter]').forEach((item) => item.classList.toggle("active", item === button));
+    document.querySelectorAll('[data-plaud-filter]').forEach((item) => item.classList.toggle("active", item === button));
     refreshPlaudPage();
   }));
 };
@@ -1321,7 +1321,7 @@ $("#noticeButton").addEventListener("click", () => showToast("읽지 않은 알�
 const showApp = async () => {
   guestView.hidden = true;
   appView.hidden = false;
-  await Promise.all([loadMenuConfig(), loadQuickLinks()]);
+  const bootstrapData = Promise.allSettled([loadMenuConfig(), loadQuickLinks()]);
   const now = new Date();
   $("#todayLabel").textContent = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" }).format(now);
   $(".profile b").textContent = currentUser?.name || "임직원";
@@ -1334,6 +1334,11 @@ const showApp = async () => {
     showToast(calendarResult === "connected" ? "Google Calendar 계정 승인이 완료되었습니다." : "Google Calendar 계정 승인이 취소되었습니다.");
     history.replaceState({}, "", location.pathname);
   }
+  await bootstrapData;
+  if (!currentUser || appView.hidden) return;
+  renderNavigation();
+  document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.nav === currentPage));
+  if (currentPage === "dashboard") renderQuickLinks();
 };
 
 setupSearch();
