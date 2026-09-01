@@ -232,6 +232,7 @@ def public_meeting(row, actor, detail=False, reveal_titles=False):
         "masked_title": mask_title(row.get("title")),
         "title_revealed": reveal,
         "can_reveal_title": bool(actor) and actor.get("role") == "admin",
+        "can_delete": bool(actor) and actor.get("role") == "admin",
         "status": row.get("status") or "processing",
         "device_model": row.get("device_model") or "PN0300",
         "source": row.get("source") or "plaud_note_pro",
@@ -327,6 +328,35 @@ def get_meeting(meeting_id, actor, reveal_titles=False):
     if not row:
         raise core.AppError("기기 회의록을 찾을 수 없습니다.", 404)
     return public_meeting(row, actor, detail=True, reveal_titles=reveal_titles)
+
+
+def delete_meeting(meeting_id, actor, ip=None):
+    if not actor or actor.get("role") != "admin":
+        raise core.AppError("기기 회의록 삭제는 관리자만 할 수 있습니다.", 403)
+    meeting_id = str(meeting_id)
+    if core.DB_ENABLED:
+        row = core.execute(
+            "DELETE FROM plaud_device_meetings WHERE id=%s RETURNING id,external_id,title",
+            (meeting_id,),
+        )
+    else:
+        row = _memory_meetings.pop(meeting_id, None)
+    if not row:
+        raise core.AppError("삭제할 기기 회의록을 찾을 수 없습니다.", 404)
+    core.write_audit(
+        actor.get("id"),
+        "plaud_device.meeting.delete",
+        "plaud_device_meeting",
+        meeting_id,
+        {"external_id": row.get("external_id"), "title": row.get("title")},
+        ip,
+    )
+    logger.info(
+        "PLAUD device meeting deleted meeting_id=%s actor_id=%s",
+        meeting_id,
+        str(actor.get("id")),
+    )
+    return {"success": True, "deleted_id": meeting_id}
 
 
 def _join_lines(values):
