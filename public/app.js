@@ -75,7 +75,7 @@ let plaudPageLoading = false;
 
 const plaudRequest = async (url, options = {}) => {
   const headers = { accept: "application/json", ...(options.headers || {}) };
-  if (options.body && !headers["content-type"]) headers["content-type"] = "application/json";
+  if (options.body && !(options.body instanceof FormData) && !headers["content-type"]) headers["content-type"] = "application/json";
   let response;
   try {
     response = await fetch(url, { ...options, headers });
@@ -261,15 +261,22 @@ const uploadPlaudMeeting = async () => {
       const part = upload.parts[index];
       const offset = (Number(part.part_number) - 1) * Number(upload.chunk_size);
       const chunk = file.slice(offset, Math.min(file.size, offset + Number(upload.chunk_size)));
-      let response;
+      const formData = new FormData();
+      formData.append("chunk", chunk, `plaud-part-${part.part_number}.${fileType}`);
+      formData.append("upload_url", part.upload_url);
+      formData.append("proxy_token", part.proxy_token);
+      formData.append("part_number", String(part.part_number));
+      let uploadedPart;
       try {
-        response = await fetch(part.upload_url, { method: "PUT", body: chunk });
-      } catch {
-        throw new Error(`2/5 파일 전송: ${part.part_number}번 조각을 PLAUD 저장소로 전송하지 못했습니다. 브라우저 CORS 또는 네트워크 상태를 확인해 주세요.`);
+        uploadedPart = await plaudRequest("/api/meetings/plaud/uploads/part", {
+          method: "POST",
+          body: formData,
+        });
+      } catch (error) {
+        throw new Error(`2/5 파일 전송: ${part.part_number}번 조각 전송 실패 · ${error.message}`);
       }
-      if (!response.ok) throw new Error(`2/5 파일 전송: ${part.part_number}번 조각 업로드가 거부되었습니다. (HTTP ${response.status})`);
-      const etag = response.headers.get("ETag") || response.headers.get("etag");
-      if (!etag) throw new Error("2/5 파일 전송: PLAUD 업로드 확인값(ETag)을 받지 못했습니다. 브라우저 CORS 설정을 확인해 주세요.");
+      const etag = uploadedPart.ETag || uploadedPart.etag;
+      if (!etag) throw new Error(`2/5 파일 전송: ${part.part_number}번 조각의 PLAUD 확인값(ETag)을 받지 못했습니다.`);
       partList.push({ PartNumber: Number(part.part_number), ETag: etag });
       updatePlaudProgress(5 + ((index + 1) / upload.parts.length) * 82, `2/5 녹음파일 전송 중 · ${index + 1}/${upload.parts.length}`);
     }
@@ -376,7 +383,7 @@ const renderPlaudMeetingPage = async () => {
         <button id="plaudChooseFile" type="button" class="button secondary">녹음파일 선택</button>
       </div>
       <div id="plaudUploadProgress" class="plaud-upload-progress" hidden></div>
-      <footer class="plaud-upload-actions"><span>파일은 앱 서버에 저장하지 않고 PLAUD로 분할 전송됩니다.</span><button id="plaudUploadButton" type="button" class="button primary" disabled>PLAUD 회의록 만들기</button></footer>
+      <footer class="plaud-upload-actions"><span>파일은 앱 서버에 저장하지 않고 보안 중계 후 PLAUD로 분할 전송됩니다.</span><button id="plaudUploadButton" type="button" class="button primary" disabled>PLAUD 회의록 만들기</button></footer>
     </section>
     <section class="content-panel plaud-board-panel">
       <header class="plaud-board-header"><div><span class="eyebrow">MEETING BOARD</span><h2>회의록 게시판 <small id="plaudBoardCount">0건</small></h2></div><div class="plaud-board-tools"><input id="plaudSearch" placeholder="회의 제목 검색" /><div class="plaud-filter-buttons"><button class="active" data-plaud-filter="">전체</button><button data-plaud-filter="completed">완료</button><button data-plaud-filter="processing">처리 중</button><button data-plaud-filter="failed">실패</button></div></div></header>
@@ -938,7 +945,7 @@ const updateMenuCreateParentOptions = () => {
   const parentSelect = $("#menuCreateParent");
   if (!groupSelect || !parentSelect) return;
   const group = menuGroups.find((candidate) => candidate.id === groupSelect.value);
-  parentSelect.innerHTML = `<option value="">${escapeHtml(group?.label || "선택한 최상단")} 바로 아래</option>${(group?.items || []).map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)} 하위</option>`).join("")}`;
+  parentSelect.innerHTML = `<option value="">${escapeHtml(group?.label || "선택한 최상단")} 바로 아래<[REDACTED]>${(group?.items || []).map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)} 하위<[REDACTED]>`).join("")}`;
 };
 
 const renderAdminTab = (tab) => {
@@ -981,7 +988,7 @@ const renderAdminTab = (tab) => {
           ${menuOrderMarkup()}
           <form id="menuCreateForm" class="menu-create-form">
             <div><span class="eyebrow">NEW CATEGORY</span><h2>카테고리 등록</h2><p>소속 최상단을 지정한 뒤 바로 아래 또는 기존 카테고리 하위에 추가합니다. ADMIN은 고정 영역입니다.</p></div>
-            <label>최상단 카테고리<select id="menuCreateGroup" name="group_id" required>${configurableMenuGroups().map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.label)}</option>`).join("")}</select></label>
+            <label>최상단 카테고리<select id="menuCreateGroup" name="group_id" required>${configurableMenuGroups().map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.label)}<[REDACTED]>`).join("")}</select></label>
             <label>등록 위치<select id="menuCreateParent" name="parent_id"></select></label>
             <label>카테고리 이름<input name="label" minlength="1" maxlength="40" placeholder="새 카테고리 이름" required /></label>
             <label>연결 URL <small>선택</small><input name="url" type="url" placeholder="https://" /></label>
@@ -1123,282 +1130,4 @@ const updateEmployee = async (id, payload) => {
   try {
     const response = await fetch(`/api/admin/users/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.message);
-    showToast("계정 정보가 변경되었습니다.");
-    await loadEmployees();
-  } catch (error) { showToast(error.message || "계정 변경에 실패했습니다."); }
-};
-
-const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
-
-$$('[data-close-employee]').forEach((button) => button.addEventListener("click", () => employeeDialog.close()));
-$$('[data-close-quick-links]').forEach((button) => button.addEventListener("click", () => quickLinksDialog.close()));
-$("#quickLinksForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const ids = [...event.currentTarget.querySelectorAll('input[name="system_id"]:checked')].map((input) => input.value);
-  $("#quickLinksError").textContent = "";
-  if (!ids.length || ids.length > 5) {
-    $("#quickLinksError").textContent = "자주 찾는 시스템을 1개 이상 5개 이하로 선택해 주세요.";
-    return;
-  }
-  try {
-    const response = await fetch("/api/quick-links", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ system_ids: ids })
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.message);
-    quickLinks = result.links || [];
-    quickLinkCatalog = result.catalog || quickLinkCatalog;
-    quickLinksDialog.close();
-    renderQuickLinks();
-    showToast("나만의 자주 찾는 시스템이 저장되었습니다.");
-  } catch (error) {
-    $("#quickLinksError").textContent = error.message || "자주 찾는 시스템 저장에 실패했습니다.";
-  }
-});
-$("#employeeForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const payload = Object.fromEntries(new FormData(form));
-  $("#employeeFormError").textContent = "";
-  try {
-    const editing = Boolean(editingEmployeeId);
-    const response = await fetch(editing ? `/api/admin/users/${editingEmployeeId}` : "/api/admin/users", { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.message);
-    if (result.user.id === currentUser?.id) {
-      currentUser = result.user;
-      sessionStorage.setItem("medpark-preview-session", JSON.stringify(result.user));
-      $(".profile b").textContent = result.user.name;
-      $(".profile small").textContent = `${result.user.department || "소속 미지정"} · 관리자`;
-      $(".profile .avatar").textContent = result.user.name.slice(0, 1);
-    }
-    form.reset(); employeeDialog.close(); showToast(editing ? `${result.user.username} 계정 정보가 수정되었습니다.` : `${result.user.username} 계정이 등록되었습니다.`);
-    await loadEmployees();
-  } catch (error) { $("#employeeFormError").textContent = error.message || (editingEmployeeId ? "계정 수정에 실패했습니다." : "계정 등록에 실패했습니다."); }
-});
-
-const renderPlaceholder = (title, icon) => {
-  pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">CONNECTED SYSTEM</span><h1>${title}</h1><p>외부 시스템 또는 API 연결을 준비하고 있습니다.</p></div></section><section class="content-panel"><div class="placeholder-state"><div><i>${icon === "calendar" ? "□" : icon === "meetings" ? "☷" : "↗"}</i><h2>${title} 연결 준비 중</h2><p>관리자가 실제 URL 또는 API 인증정보를 등록하면 이곳에서 바로 사용할 수 있습니다.</p><button class="button primary" style="margin-top:20px" id="configButton">연결 설정 보기</button></div></div></section>`;
-  $("#configButton").addEventListener("click", () => showToast("보안을 위해 인증정보는 배포 환경변수로 등록합니다."));
-};
-
-const calendarPickerMarkup = (calendars = []) => calendars.length ? calendars.map((calendar) => `
-  <label class="calendar-choice">
-    <input type="checkbox" name="calendar_selection" value="${escapeHtml(calendar.calendar_id)}" ${calendar.selected !== false ? "checked" : ""} />
-    <i style="--calendar-color:${escapeHtml(calendar.background_color || "#0a9b7e")}"></i>
-    <span><b>${escapeHtml(calendar.summary || calendar.calendar_id)}</b><small>${calendar.primary_calendar ? "기본 캘린더 · " : ""}${escapeHtml(calendar.access_role || "reader")} · ${escapeHtml(calendar.calendar_id)}</small></span>
-  </label>`).join("") : '<p class="calendar-picker-empty">Google 계정 승인 후 ‘캘린더 목록 불러오기’를 눌러 주세요.</p>';
-
-const calendarSettingsMarkup = (settings) => `
-  <section class="calendar-settings-layout">
-    <article class="calendar-connection-card">
-      <span class="connection-light ${settings.connected ? "on" : ""}"></span>
-      <div><span>연결 상태</span><b>${settings.connected ? "Google Calendar 연결됨" : settings.configured ? "설정 저장됨 · 연결 확인 필요" : "연결되지 않음"}</b><small>${escapeHtml(settings.calendar_id || "medpark.remote@gmail.com")}</small></div>
-    </article>
-    <form id="calendarSettingsForm" class="calendar-settings-form">
-      <div class="settings-section-heading"><span class="eyebrow">GOOGLE CALENDAR</span><h2>연결 방식 설정</h2><p>API 키는 공개 캘린더용이며, 비공개 캘린더는 OAuth 2.0 승인이 필요합니다.</p></div>
-      <label>연결 방식<select name="mode" id="calendarMode"><option value="api_key" ${settings.mode !== "oauth" ? "selected" : ""}>API 키 · 공개 캘린더</option><option value="oauth" ${settings.mode === "oauth" ? "selected" : ""}>OAuth 2.0 · 비공개 캘린더</option></select></label>
-      <label>Google 캘린더 ID<input name="calendar_id" value="${escapeHtml(settings.calendar_id || "medpark.remote@gmail.com")}" maxlength="255" required /><small>기본 캘린더는 보통 Google 계정 이메일과 같습니다.</small></label>
-      <div id="apiKeyFields" class="calendar-mode-fields">
-        <label>Calendar API 키<input name="api_key" type="password" autocomplete="new-password" placeholder="${settings.api_key_saved ? "저장된 API 키 유지" : "AIza..."}" /><small>Google Cloud에서 Calendar API를 활성화하고 생성한 키를 입력합니다.</small></label>
-      </div>
-      <div id="oauthFields" class="calendar-mode-fields">
-        <label>OAuth 2.0 Client ID<input name="oauth_client_id" value="${escapeHtml(settings.oauth_client_id || "")}" placeholder="...apps.googleusercontent.com" /><small>애플리케이션 유형은 ‘웹 애플리케이션’으로 생성합니다.</small></label>
-        <label>OAuth 2.0 Client Secret<input name="oauth_client_secret" type="password" autocomplete="new-password" placeholder="${settings.oauth_client_secret_saved ? "저장된 Client Secret 유지" : "GOCSPX-..."}" /></label>
-        <label>승인된 리디렉션 URI<input value="${escapeHtml(settings.redirect_uri)}" readonly /><small>Google Cloud OAuth 클라이언트에 이 주소를 정확히 등록해야 합니다.</small></label>
-        <label>요청 권한<input value="읽기 전용 · calendar.readonly" readonly /></label>
-        <section class="calendar-picker-section">
-          <div class="calendar-picker-heading"><div><b>표시할 캘린더</b><small>연결 계정에서 읽을 수 있는 캘린더를 여러 개 선택할 수 있습니다.</small></div><button type="button" id="loadCalendarList" class="button secondary">캘린더 목록 불러오기</button></div>
-          <div class="calendar-picker-actions"><button type="button" id="selectAllCalendars">전체 선택</button><button type="button" id="clearCalendarSelection">선택 해제</button><span id="calendarSelectionCount">${(settings.selected_calendars || []).length}개 선택</span></div>
-          <div id="calendarPickerList" class="calendar-picker-list">${calendarPickerMarkup(settings.selected_calendars || [])}</div>
-          <button type="button" id="saveCalendarSelection" class="button primary full" ${(settings.selected_calendars || []).length ? "" : "disabled"}>선택한 캘린더 저장</button>
-        </section>
-      </div>
-      <p id="calendarSettingsError" class="form-error"></p>
-      <footer><button type="button" id="testCalendar" class="button secondary">연결 테스트</button><button type="submit" class="button primary">설정 저장</button><button type="button" id="authorizeCalendar" class="button primary">Google 계정 승인</button></footer>
-    </form>
-  </section>`;
-
-const updateCalendarModeFields = () => {
-  const mode = $("#calendarMode")?.value;
-  if (!mode) return;
-  $("#apiKeyFields").hidden = mode !== "api_key";
-  $("#oauthFields").hidden = mode !== "oauth";
-  $("#authorizeCalendar").hidden = mode !== "oauth";
-};
-
-const updateCalendarSelectionCount = () => {
-  const choices = $$('[name="calendar_selection"]');
-  const selected = choices.filter((input) => input.checked).length;
-  const count = $("#calendarSelectionCount");
-  if (count) count.textContent = `${selected}개 선택`;
-  const save = $("#saveCalendarSelection");
-  if (save) save.disabled = selected === 0;
-};
-
-const bindCalendarPicker = () => {
-  $("#calendarPickerList")?.addEventListener("change", updateCalendarSelectionCount);
-  $("#selectAllCalendars")?.addEventListener("click", () => { $$('[name="calendar_selection"]').forEach((input) => { input.checked = true; }); updateCalendarSelectionCount(); });
-  $("#clearCalendarSelection")?.addEventListener("click", () => { $$('[name="calendar_selection"]').forEach((input) => { input.checked = false; }); updateCalendarSelectionCount(); });
-  $("#loadCalendarList")?.addEventListener("click", async (event) => {
-    const button = event.currentTarget;
-    button.disabled = true;
-    $("#calendarSettingsError").textContent = "";
-    $("#calendarPickerList").innerHTML = '<div class="calendar-loading compact"><span class="spinner"></span><p>사용 가능한 캘린더를 불러오는 중입니다.</p></div>';
-    try {
-      const response = await fetch("/api/admin/calendar/calendars", { headers: { accept: "application/json" } });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message);
-      $("#calendarPickerList").innerHTML = calendarPickerMarkup(result.calendars || []);
-      updateCalendarSelectionCount();
-    } catch (error) {
-      $("#calendarPickerList").innerHTML = '<p class="calendar-picker-empty">캘린더 목록을 불러오지 못했습니다.</p>';
-      $("#calendarSettingsError").textContent = error.message || "캘린더 목록을 불러오지 못했습니다.";
-    } finally { button.disabled = false; }
-  });
-  $("#saveCalendarSelection")?.addEventListener("click", async (event) => {
-    const button = event.currentTarget;
-    const calendarIds = $$('[name="calendar_selection"]:checked').map((input) => input.value);
-    button.disabled = true;
-    $("#calendarSettingsError").textContent = "";
-    try {
-      const response = await fetch("/api/admin/calendar/calendars", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ calendar_ids: calendarIds }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message);
-      clearCalendarEventCache();
-      showToast(`${result.selected_calendars.length}개 캘린더가 저장되었습니다.`);
-      await loadCalendarSettingsPage();
-    } catch (error) {
-      $("#calendarSettingsError").textContent = error.message || "캘린더 선택 저장에 실패했습니다.";
-      button.disabled = false;
-    }
-  });
-};
-
-const loadCalendarSettingsPage = async () => {
-  const host = $("#calendarSettingsHost");
-  if (!host) return;
-  try {
-    const response = await fetch("/api/admin/calendar/settings", { headers: { accept: "application/json" } });
-    const settings = await response.json();
-    if (!response.ok) throw new Error(settings.message);
-    host.innerHTML = calendarSettingsMarkup(settings);
-    updateCalendarModeFields();
-    bindCalendarPicker();
-    $("#calendarMode").addEventListener("change", updateCalendarModeFields);
-    $("#calendarSettingsForm").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const payload = Object.fromEntries(new FormData(event.currentTarget));
-      $("#calendarSettingsError").textContent = "";
-      try {
-        const saveResponse = await fetch("/api/admin/calendar/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-        const result = await saveResponse.json();
-        if (!saveResponse.ok) throw new Error(result.message);
-        clearCalendarEventCache();
-        showToast("Google Calendar 연결 설정이 안전하게 저장되었습니다.");
-        await loadCalendarSettingsPage();
-      } catch (error) { $("#calendarSettingsError").textContent = error.message || "설정 저장에 실패했습니다."; }
-    });
-    $("#testCalendar").addEventListener("click", async () => {
-      $("#calendarSettingsError").textContent = "";
-      try {
-        const testResponse = await fetch("/api/admin/calendar/test", { method: "POST" });
-        const result = await testResponse.json();
-        if (!testResponse.ok) throw new Error(result.message);
-        showToast(result.message);
-      } catch (error) { $("#calendarSettingsError").textContent = error.message || "연결 테스트에 실패했습니다."; }
-    });
-    $("#authorizeCalendar").addEventListener("click", async () => {
-      $("#calendarSettingsError").textContent = "";
-      try {
-        const authResponse = await fetch("/api/admin/calendar/oauth/start", { method: "POST" });
-        const result = await authResponse.json();
-        if (!authResponse.ok) throw new Error(result.message);
-        location.assign(result.authorization_url);
-      } catch (error) { $("#calendarSettingsError").textContent = error.message || "Google 승인을 시작하지 못했습니다."; }
-    });
-  } catch (error) { host.innerHTML = `<div class="calendar-error-state"><i>!</i><h3>연결 설정을 불러오지 못했습니다.</h3><p>${escapeHtml(error.message || "다시 시도해 주세요.")}</p></div>`; }
-};
-
-const renderCalendarSettings = () => {
-  pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">ADMINISTRATION</span><h1>일정(캘린더)_관리자</h1><p>Google Calendar 일정 조회와 인증 방식을 관리합니다.</p></div><button id="backToDashboard" class="button secondary">일정으로 돌아가기</button></section><section class="content-panel calendar-settings-panel"><div id="calendarSettingsHost">${currentUser?.role === "admin" ? '<div class="calendar-loading"><span class="spinner"></span><p>연결 설정을 불러오는 중입니다.</p></div>' : '<div class="placeholder-state"><div><i>□</i><h2>Google Calendar</h2><p>연결 설정은 관리자만 변경할 수 있습니다.</p></div></div>'}</div></section>`;
-  $("#backToDashboard").addEventListener("click", () => navigate("calendar"));
-  if (currentUser?.role === "admin") loadCalendarSettingsPage();
-};
-
-const renderCalendarPage = () => {
-  resetCalendarToToday();
-  pageContent.innerHTML = `<section class="page-heading"><div><span class="eyebrow">COLLABORATION</span><h1>일정(캘린더)</h1><p>메드파크 주요 일정을 월별로 확인합니다.</p></div></section><section class="panel standalone-calendar-panel"><div id="carouselBody" class="carousel-body"></div></section>`;
-  carouselMode = "calendar";
-  renderCalendarView();
-};
-
-const openSidebar = () => { $("#sidebar").classList.add("open"); $("#sidebarBackdrop").classList.add("open"); };
-const closeSidebar = () => { $("#sidebar").classList.remove("open"); $("#sidebarBackdrop").classList.remove("open"); };
-$("#openSidebar").addEventListener("click", openSidebar);
-$("#closeSidebar").addEventListener("click", closeSidebar);
-$("#sidebarBackdrop").addEventListener("click", closeSidebar);
-
-const setupSearch = () => {
-  const draw = (query = "") => {
-    const visibleGroups = menuGroups.filter((group) => group.id !== "admin" || currentUser?.role === "admin");
-    const allItems = visibleGroups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.label })));
-    const items = allItems.filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
-    $("#searchResults").innerHTML = items.map((item) => item.url
-      ? `<a class="search-result" href="${escapeHtml(item.url)}"${linkAttributes(item.url)}><b>${escapeHtml(item.icon)} &nbsp; ${escapeHtml(item.title)}</b><span>${escapeHtml(item.group)} · ${isInternalUrl(item.url) ? "내부 이동" : "새 탭"}</span></a>`
-      : `<button type="button" class="search-result" data-search-page="${escapeHtml(item.id)}"><b>${escapeHtml(item.icon)} &nbsp; ${escapeHtml(item.title)}</b><span>${escapeHtml(item.group)}</span></button>`).join("") || '<div style="padding:30px;text-align:center;color:#8a9693;font-size:11px">검색 결과가 없습니다.</div>';
-    $$('[data-search-page]').forEach((button) => button.addEventListener("click", () => { searchDialog.close(); navigate(button.dataset.searchPage); }));
-  };
-  $("#searchButton").addEventListener("click", () => { draw(); searchDialog.showModal(); setTimeout(() => $("#menuSearch").focus(), 50); });
-  $("#menuSearch").addEventListener("input", (event) => draw(event.target.value));
-  document.addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); draw(); searchDialog.showModal(); }
-  });
-};
-
-$("#noticeButton").addEventListener("click", () => showToast("읽지 않은 알림이 3개 있습니다."));
-
-const showApp = async () => {
-  guestView.hidden = true;
-  appView.hidden = false;
-  const bootstrapData = Promise.allSettled([loadMenuConfig(), loadQuickLinks()]);
-  const now = new Date();
-  $("#todayLabel").textContent = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" }).format(now);
-  $(".profile b").textContent = currentUser?.name || "임직원";
-  $(".profile small").textContent = `${currentUser?.department || "소속 미지정"} · ${currentUser?.role === "admin" ? "관리자" : "임직원"}`;
-  $(".profile .avatar").textContent = (currentUser?.name || "M").slice(0, 1);
-  renderNavigation();
-  const calendarResult = new URLSearchParams(location.search).get("calendar");
-  navigate(calendarResult && currentUser?.role === "admin" ? "calendar" : "dashboard");
-  if (calendarResult) {
-    showToast(calendarResult === "connected" ? "Google Calendar 계정 승인이 완료되었습니다." : "Google Calendar 계정 승인이 취소되었습니다.");
-    history.replaceState({}, "", location.pathname);
-  }
-  await bootstrapData;
-  if (!currentUser || appView.hidden) return;
-  renderNavigation();
-  document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.nav === currentPage));
-  if (currentPage === "dashboard") renderQuickLinks();
-};
-
-setupSearch();
-if (location.protocol === "file:" && new URLSearchParams(location.search).get("mode") === "app") {
-  currentUser = { name: "김관리", role: "admin", department: "경영지원본부" };
-  sessionStorage.setItem("medpark-preview-session", JSON.stringify(currentUser));
-  showApp();
-} else {
-  fetch("/api/auth/me", { headers: { accept: "application/json" } }).then(async (response) => {
-    if (!response.ok) throw new Error("no-session");
-    const result = await response.json();
-    currentUser = result.user;
-    sessionStorage.setItem("medpark-preview-session", JSON.stringify(result.user));
-    await showApp();
-  }).catch(() => {
-    sessionStorage.removeItem("medpark-preview-session");
-    guestView.hidden = false;
-    appView.hidden = true;
-  });
-}
+    if (!response.ok) 
