@@ -65,7 +65,29 @@ def _safe_upstream_message(raw, fallback):
         message = details.get("message") or details.get("detail") or details.get("error") or fallback
     except (ValueError, AttributeError, TypeError):
         message = raw or fallback
-    return re.sub(r"\s+", " ", str(message)).strip()[:180]
+    safe_message = str(message)
+    credentials = _credentials()
+    for secret in (credentials["client_id"], credentials["client_secret"], credentials["api_key"]):
+        if secret:
+            safe_message = safe_message.replace(secret, "[보호됨]")
+    safe_message = re.sub(r"eyJ[A-Za-z0-9_.-]{20,}", "[보호된 토큰]", safe_message)
+    return re.sub(r"\s+", " ", safe_message).strip()[:180]
+
+
+def _open_plaud_request(req, timeout, stage):
+    direct_opener = urlrequest.build_opener(urlrequest.ProxyHandler({}))
+    try:
+        logger.info("PLAUD direct connection attempt stage=%s", stage)
+        return direct_opener.open(req, timeout=timeout)
+    except urlerror.HTTPError:
+        raise
+    except (urlerror.URLError, TimeoutError) as exc:
+        logger.warning(
+            "PLAUD direct connection unavailable; retrying with system network stage=%s error=%s",
+            stage,
+            type(exc).__name__,
+        )
+        return urlrequest.urlopen(req, timeout=timeout)
 
 
 def _http_json(method, path, *, headers=None, payload=None, form=None, timeout=20, stage="PLAUD API"):
@@ -85,7 +107,7 @@ def _http_json(method, path, *, headers=None, payload=None, form=None, timeout=2
     )
     logger.info("PLAUD request started stage=%s method=%s path=%s", stage, method.upper(), path)
     try:
-        with urlrequest.urlopen(req, timeout=timeout) as response:
+        with _open_plaud_request(req, timeout, stage) as response:
             raw = response.read().decode("utf-8")
             logger.info("PLAUD request completed stage=%s status=%s", stage, getattr(response, "status", 200))
             return json.loads(raw) if raw else {}
@@ -94,7 +116,15 @@ def _http_json(method, path, *, headers=None, payload=None, form=None, timeout=2
         detail = _safe_upstream_message(raw, f"HTTP {exc.code}")
         logger.warning("PLAUD request rejected stage=%s status=%s detail=%s", stage, exc.code, detail)
         if exc.code in {401, 403}:
-            message = f"{stage}: PLAUD 인증이 거부되었습니다. Client ID, Client Secret 또는 API Key를 확인해 주세요."
+            if stage.startswith("1/3"):
+                message = (
+                    f"{stage}: PLAUD가 AI SPACE 서버 요청을 거부했습니다. "
+                    f"HTTP {exc.code} ({detail})"
+                )
+            elif stage.startswith("2/3"):
+                message = f"{stage}: PLAUD User Token 인증이 거부되었습니다. HTTP {exc.code} ({detail})"
+            else:
+                message = f"{stage}: PLAUD API 인증이 거부되었습니다. HTTP {exc.code} ({detail})"
         elif exc.code == 429:
             message = f"{stage}: PLAUD API 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요."
         elif exc.code >= 500:
@@ -174,7 +204,7 @@ def _test_transcription_credentials():
     )
     logger.info("PLAUD authentication probe started stage=3/3 Transcription API")
     try:
-        with urlrequest.urlopen(req, timeout=12) as response:
+        with _open_plaud_request(req, 12, "3/3 Transcription API") as response:
             response.read()
             logger.info("PLAUD authentication probe completed status=%s", getattr(response, "status", 200))
     except urlerror.HTTPError as exc:
