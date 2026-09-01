@@ -139,7 +139,19 @@ def _http_json(method, path, *, headers=None, payload=None, form=None, timeout=2
     except urlerror.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")
         detail = _safe_upstream_message(raw, f"HTTP {exc.code}")
-        logger.warning("PLAUD request rejected stage=%s status=%s detail=%s", stage, exc.code, detail)
+        request_id = (
+            exc.headers.get("x-request-id")
+            or exc.headers.get("x-amz-request-id")
+            or exc.headers.get("x-plaud-request-id")
+            or "not-provided"
+        )
+        logger.warning(
+            "PLAUD request rejected stage=%s status=%s detail=%s request_id=%s",
+            stage,
+            exc.code,
+            detail,
+            request_id,
+        )
         if exc.code in {401, 403}:
             if "DEVICE_MISSING" in detail.upper():
                 message = (
@@ -579,7 +591,7 @@ def complete_upload(data, user, ip=None):
             "params": {
                 "transcribe": {"language": "auto", "model": "plaud-fast-whisper"},
                 "vad": {"decode_silence": False},
-                "diarization": {"enabled": True, "return_embedding": False},
+                "diarization": {"enabled": False, "return_embedding": False},
             },
         },
         stage="4/5 PLAUD 전사 작업 생성",
