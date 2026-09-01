@@ -707,6 +707,13 @@ a { color: inherit; text-decoration: none; }
 .plaud-page-heading { align-items: center; }
 .plaud-page-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; flex-wrap: wrap; }
 .plaud-page-actions .button { min-height: 35px; padding: 0 13px; white-space: nowrap; }
+.plaud-web-link { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 5px 10px 5px 6px; border: 1px solid #d6dfdc; border-radius: 10px; background: #fff; color: #1b2e29; text-decoration: none; box-shadow: 0 3px 12px rgba(12,45,38,.05); transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease; }
+.plaud-web-link:hover { border-color: #8abaae; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(12,45,38,.09); }
+.plaud-web-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: #111; color: #fff; font-size: 13px; font-weight: 900; }
+.plaud-web-link > span:nth-child(2) { display: grid; gap: 1px; }
+.plaud-web-link b { font-size: 9px; line-height: 1.1; }
+.plaud-web-link small { color: #86928e; font-size: 7px; }
+.plaud-web-link svg { width: 14px; height: 14px; fill: none; stroke: #6c7d78; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .plaud-connection { display: inline-flex; align-items: center; gap: 8px; min-height: 35px; padding: 0 13px; border: 1px solid #d7e4e0; border-radius: 999px; background: #fff; color: #66736f; font-size: 10px; font-weight: 800; white-space: nowrap; }
 .plaud-connection i { width: 8px; height: 8px; border-radius: 50%; background: #c6cecb; box-shadow: 0 0 0 4px #f0f3f2; }
 .plaud-connection.ready { border-color: #b8ddcf; color: var(--green-800); background: var(--green-50); }
@@ -764,6 +771,8 @@ a { color: inherit; text-decoration: none; }
 .plaud-status.failed { background: #fff0ee; color: #bb5047; }
 .plaud-row-button { min-height: 28px; padding: 0 9px; border: 1px solid #cedcd8; border-radius: 7px; background: #fff; color: var(--green-800); font-size: 8px; font-weight: 800; }
 .plaud-row-button:hover { border-color: #7dbdab; background: var(--green-50); }
+.plaud-row-button.danger { border-color: #ebceca; color: #b54d45; }
+.plaud-row-button.danger:hover { border-color: #d78179; background: #fff3f1; }
 .plaud-empty { min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; color: #85918d; text-align: center; }
 .plaud-empty i { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: #eef4f2; color: #638079; font-size: 17px; font-style: normal; }
 .plaud-empty b { color: #4e625d; font-size: 10px; }
@@ -812,8 +821,9 @@ a { color: inherit; text-decoration: none; }
 .plaud-device-detail-list { padding-left: 17px; }
 .plaud-device-detail-list li + li { margin-top: 5px; }
 .plaud-device-detail-empty { color: #929d99; }
-.plaud-device-detail-actions { display: flex; justify-content: flex-end; margin-top: 16px; padding-top: 14px; border-top: 1px solid #e3eae8; }
+.plaud-device-detail-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid #e3eae8; }
 .plaud-device-detail-actions .button { text-decoration: none; }
+.plaud-device-detail-actions .button.danger { border: 1px solid #e6c0bb; background: #fff6f4; color: #ad463e; }
 
 @media (max-width: 820px) {
   .plaud-stat-grid { grid-template-columns: 1fr 1fr; }
