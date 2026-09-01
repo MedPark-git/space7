@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import http.client as httpclient
 import ipaddress
 import json
 import logging
@@ -416,54 +417,72 @@ def upload_part(upload_url, proxy_token, part_number, chunk, user):
         raise core.AppError("업로드할 파일 조각이 비어 있습니다.")
     if len(chunk) > MAX_PROXY_CHUNK_SIZE:
         raise core.AppError("파일 조각 크기가 서버 전송 한도를 초과했습니다.", 413)
+
     parsed = urlparse.urlsplit(upload_url)
+    request_target = parsed.path or "/"
+    if parsed.query:
+        request_target = f"{request_target}?{parsed.query}"
+    signed_headers = next(
+        (
+            value
+            for key, value in urlparse.parse_qsl(parsed.query, keep_blank_values=True)
+            if key.lower() == "x-amz-signedheaders"
+        ),
+        "",
+    )
     logger.info(
-        "PLAUD proxy upload started user_id=%s part=%s size=%s host=%s",
+        "PLAUD proxy upload started user_id=%s part=%s size=%s host=%s signed_headers=%s",
         str(user["id"]),
         number,
         len(chunk),
         parsed.hostname,
+        signed_headers or "not-declared",
     )
-    req = urlrequest.Request(
-        upload_url,
-        data=bytes(chunk),
-        headers={
-            "Content-Length": str(len(chunk)),
-            "User-Agent": "curl/8.5.0",
-            "Connection": "close",
-        },
-        method="PUT",
-    )
+
+    connection = httpclient.HTTPSConnection(parsed.hostname, port=parsed.port or 443, timeout=90)
     try:
-        with _open_plaud_request(req, 90, f"2/5 파일 전송 {number}번 조각") as response:
-            response.read()
-            etag = response.headers.get("ETag") or response.headers.get("etag")
-            if not etag:
-                raise core.AppError(f"2/5 파일 전송: {number}번 조각의 ETag를 받지 못했습니다.", 502)
-            logger.info(
-                "PLAUD proxy upload completed user_id=%s part=%s status=%s",
+        # PLAUD's reference clients send only raw bytes. Using http.client avoids
+        # urllib's implicit application/x-www-form-urlencoded Content-Type,
+        # which invalidates some S3-compatible presigned signatures.
+        connection.request(
+            "PUT",
+            request_target,
+            body=bytes(chunk),
+            headers={"Content-Length": str(len(chunk))},
+        )
+        response = connection.getresponse()
+        raw = response.read()
+        if not 200 <= response.status < 300:
+            detail = _safe_upstream_message(
+                raw.decode("utf-8", errors="replace"),
+                f"HTTP {response.status}",
+            )
+            logger.warning(
+                "PLAUD proxy upload rejected user_id=%s part=%s status=%s detail=%s signed_headers=%s",
                 str(user["id"]),
                 number,
-                getattr(response, "status", 200),
+                response.status,
+                detail,
+                signed_headers or "not-declared",
             )
-            return {"PartNumber": number, "ETag": etag}
-    except urlerror.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="replace")
-        detail = _safe_upstream_message(raw, f"HTTP {exc.code}")
-        logger.warning(
-            "PLAUD proxy upload rejected user_id=%s part=%s status=%s detail=%s",
+            raise core.AppError(
+                f"2/5 파일 전송: {number}번 조각이 PLAUD 저장소에서 거부되었습니다. "
+                f"HTTP {response.status} ({detail})",
+                502,
+            )
+        etag = response.getheader("ETag")
+        if not etag:
+            raise core.AppError(f"2/5 파일 전송: {number}번 조각의 ETag를 받지 못했습니다.", 502)
+        logger.info(
+            "PLAUD proxy upload completed user_id=%s part=%s status=%s",
             str(user["id"]),
             number,
-            exc.code,
-            detail,
+            response.status,
         )
-        raise core.AppError(
-            f"2/5 파일 전송: {number}번 조각이 PLAUD 저장소에서 거부되었습니다. HTTP {exc.code} ({detail})",
-            502,
-        ) from exc
+        return {"PartNumber": number, "ETag": etag}
     except core.AppError:
         raise
-    except (urlerror.URLError, TimeoutError) as exc:
+    except (httpclient.HTTPException, OSError, TimeoutError) as exc:
         logger.warning(
             "PLAUD proxy upload connection failed user_id=%s part=%s error=%s",
             str(user["id"]),
@@ -474,7 +493,8 @@ def upload_part(upload_url, proxy_token, part_number, chunk, user):
             f"2/5 파일 전송: {number}번 조각을 PLAUD 저장소로 전송하지 못했습니다.",
             503,
         ) from exc
-
+    finally:
+        connection.close()
 
 def _create_meeting(values):
     meeting_id = str(uuid.uuid4())
