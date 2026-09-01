@@ -160,7 +160,7 @@ def users_patch(user_id):
 @portal.post("/api/admin/plaud/test")
 def plaud_connection_test():
     actor = current_user(True)
-    return json_response(plaud.test_connection(actor["id"]))
+    return json_response(plaud.test_connection(actor))
 
 
 @portal.get("/api/meetings/plaud/config")
