@@ -1,4 +1,6 @@
 import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -19,6 +21,8 @@ logger = logging.getLogger("medpark.plaud")
 
 ALLOWED_FILE_TYPES = {"mp3", "opus"}
 MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024
+MAX_PROXY_CHUNK_SIZE = 8 * 1024 * 1024
+PROXY_TOKEN_LIFETIME = 60 * 60
 ACTIVE_STATUSES = {"uploading", "processing"}
 PLAUD_ACTIVE_STATUSES = {"PENDING", "RECEIVED", "STARTED", "PROGRESS"}
 PLAUD_FAILED_STATUSES = {"FAILURE", "REVOKED"}
@@ -287,6 +291,59 @@ def mask_title(title):
     return f"{text[:visible]}{'•' * max(4, min(12, len(text) - visible))}"
 
 
+def _validate_presigned_upload_url(value):
+    upload_url = str(value or "").strip()
+    try:
+        parsed = urlparse.urlsplit(upload_url)
+        port = parsed.port
+    except (ValueError, TypeError) as exc:
+        raise core.AppError("PLAUD 업로드 주소 형식이 올바르지 않습니다.", 400) from exc
+    host = (parsed.hostname or "").lower().rstrip(".")
+    is_s3_host = (
+        host == "s3.amazonaws.com"
+        or host.startswith("s3.")
+        or ".s3." in host
+        or host.endswith(".s3.amazonaws.com")
+    )
+    query_keys = {key.lower() for key, _ in urlparse.parse_qsl(parsed.query, keep_blank_values=True)}
+    if (
+        parsed.scheme != "https"
+        or not host.endswith(".amazonaws.com")
+        or not is_s3_host
+        or parsed.username
+        or parsed.password
+        or port not in (None, 443)
+        or "x-amz-signature" not in query_keys
+    ):
+        raise core.AppError("허용되지 않은 PLAUD 업로드 주소입니다.", 400)
+    return upload_url
+
+
+def _make_upload_proxy_token(upload_url, user_id, part_number):
+    expires_at = int(time.time()) + PROXY_TOKEN_LIFETIME
+    credentials = _credentials()
+    signing_key = f"{credentials['client_secret']}:{credentials['api_key']}".encode("utf-8")
+    message = f"{user_id}\n{part_number}\n{expires_at}\n{upload_url}".encode("utf-8")
+    signature = hmac.new(signing_key, message, hashlib.sha256).hexdigest()
+    return f"{expires_at}.{signature}"
+
+
+def _verify_upload_proxy_token(token, upload_url, user_id, part_number):
+    try:
+        expires_text, supplied = str(token or "").split(".", 1)
+        expires_at = int(expires_text)
+    except (TypeError, ValueError):
+        raise core.AppError("PLAUD 업로드 보안 토큰이 올바르지 않습니다.", 403)
+    if expires_at < int(time.time()) or expires_at > int(time.time()) + PROXY_TOKEN_LIFETIME + 60:
+        raise core.AppError("PLAUD 업로드 보안 토큰이 만료되었습니다. 파일 업로드를 다시 시작해 주세요.", 403)
+    credentials = _credentials()
+    signing_key = f"{credentials['client_secret']}:{credentials['api_key']}".encode("utf-8")
+    message = f"{user_id}\n{part_number}\n{expires_at}\n{upload_url}".encode("utf-8")
+    expected = hmac.new(signing_key, message, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(supplied, expected):
+        raise core.AppError("PLAUD 업로드 보안 토큰 검증에 실패했습니다.", 403)
+
+
 def start_upload(data, user):
     _require_configured()
     filename = _clean_filename(data.get("filename"))
@@ -323,7 +380,12 @@ def start_upload(data, user):
         upload_url = str(part.get("PresignedUrl") or part.get("presigned_url") or "").strip()
         if part_number < 1 or not upload_url.startswith("https://"):
             raise core.AppError("PLAUD 업로드 주소가 올바르지 않습니다.", 502)
-        normalized_parts.append({"part_number": part_number, "upload_url": upload_url})
+        upload_url = _validate_presigned_upload_url(upload_url)
+        normalized_parts.append({
+            "part_number": part_number,
+            "upload_url": upload_url,
+            "proxy_token": _make_upload_proxy_token(upload_url, user["id"], part_number),
+        })
     return {
         "file_id": file_id,
         "upload_id": upload_id,
@@ -331,6 +393,80 @@ def start_upload(data, user):
         "file_type": file_type,
         "parts": normalized_parts,
     }
+
+
+def upload_part(upload_url, proxy_token, part_number, chunk, user):
+    _require_configured()
+    try:
+        number = int(part_number)
+    except (TypeError, ValueError) as exc:
+        raise core.AppError("업로드 조각 번호가 올바르지 않습니다.") from exc
+    if number < 1 or number > 10000:
+        raise core.AppError("업로드 조각 번호가 허용 범위를 벗어났습니다.")
+    upload_url = _validate_presigned_upload_url(upload_url)
+    _verify_upload_proxy_token(proxy_token, upload_url, user["id"], number)
+    if not isinstance(chunk, (bytes, bytearray)) or not chunk:
+        raise core.AppError("업로드할 파일 조각이 비어 있습니다.")
+    if len(chunk) > MAX_PROXY_CHUNK_SIZE:
+        raise core.AppError("파일 조각 크기가 서버 전송 한도를 초과했습니다.", 413)
+    parsed = urlparse.urlsplit(upload_url)
+    logger.info(
+        "PLAUD proxy upload started user_id=%s part=%s size=%s host=%s",
+        str(user["id"]),
+        number,
+        len(chunk),
+        parsed.hostname,
+    )
+    req = urlrequest.Request(
+        upload_url,
+        data=bytes(chunk),
+        headers={
+            "Content-Length": str(len(chunk)),
+            "User-Agent": "curl/8.5.0",
+            "Connection": "close",
+        },
+        method="PUT",
+    )
+    try:
+        with _open_plaud_request(req, 90, f"2/5 파일 전송 {number}번 조각") as response:
+            response.read()
+            etag = response.headers.get("ETag") or response.headers.get("etag")
+            if not etag:
+                raise core.AppError(f"2/5 파일 전송: {number}번 조각의 ETag를 받지 못했습니다.", 502)
+            logger.info(
+                "PLAUD proxy upload completed user_id=%s part=%s status=%s",
+                str(user["id"]),
+                number,
+                getattr(response, "status", 200),
+            )
+            return {"PartNumber": number, "ETag": etag}
+    except urlerror.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        detail = _safe_upstream_message(raw, f"HTTP {exc.code}")
+        logger.warning(
+            "PLAUD proxy upload rejected user_id=%s part=%s status=%s detail=%s",
+            str(user["id"]),
+            number,
+            exc.code,
+            detail,
+        )
+        raise core.AppError(
+            f"2/5 파일 전송: {number}번 조각이 PLAUD 저장소에서 거부되었습니다. HTTP {exc.code} ({detail})",
+            502,
+        ) from exc
+    except core.AppError:
+        raise
+    except (urlerror.URLError, TimeoutError) as exc:
+        logger.warning(
+            "PLAUD proxy upload connection failed user_id=%s part=%s error=%s",
+            str(user["id"]),
+            number,
+            type(exc).__name__,
+        )
+        raise core.AppError(
+            f"2/5 파일 전송: {number}번 조각을 PLAUD 저장소로 전송하지 못했습니다.",
+            503,
+        ) from exc
 
 
 def _create_meeting(values):
