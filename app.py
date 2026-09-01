@@ -2,10 +2,11 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, make_response, redirect, request, send_from_directory
+from flask import Flask, jsonify, make_response, redirect, request, send_file, send_from_directory
 from werkzeug.exceptions import HTTPException
 
 import calendar_integration as calendar
+import plaud_device_integration as plaud_device
 import plaud_integration as plaud
 import portal_core as core
 
@@ -225,6 +226,66 @@ def plaud_upload_complete():
 def plaud_sync():
     current_user()
     return json_response(plaud.sync_meetings(5))
+
+
+@portal.get("/api/meetings/plaud-device/config")
+def plaud_device_config_get():
+    current_user()
+    return json_response(plaud_device.configuration_payload())
+
+
+@portal.get("/api/meetings/plaud-device/stats")
+def plaud_device_stats_get():
+    current_user()
+    return json_response(plaud_device.stats())
+
+
+@portal.get("/api/meetings/plaud-device")
+def plaud_device_meetings_get():
+    actor = current_user()
+    return json_response(plaud_device.list_meetings(
+        actor,
+        request.args.get("query", ""),
+        request.args.get("status", ""),
+        request.args.get("page", 1),
+        request.args.get("page_size", 30),
+        request.args.get("reveal_titles") == "1",
+    ))
+
+
+@portal.get("/api/meetings/plaud-device/<uuid:meeting_id>")
+def plaud_device_meeting_get(meeting_id):
+    actor = current_user()
+    return json_response({
+        "meeting": plaud_device.get_meeting(
+            str(meeting_id), actor, request.args.get("reveal_titles") == "1"
+        )
+    })
+
+
+@portal.get("/api/meetings/plaud-device/<uuid:meeting_id>/excel")
+def plaud_device_meeting_excel(meeting_id):
+    actor = current_user()
+    workbook, filename = plaud_device.build_excel(str(meeting_id), actor)
+    return send_file(
+        workbook,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        max_age=0,
+    )
+
+
+@portal.post("/api/integrations/plaud-device/webhook")
+def plaud_device_webhook():
+    core.ensure_database_ready()
+    authorization = str(request.headers.get("Authorization") or "")
+    bearer = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    provided_secret = request.headers.get("X-MedPark-Webhook-Secret") or bearer
+    return json_response(
+        plaud_device.accept_webhook(payload(), provided_secret, request_ip()),
+        201,
+    )
 
 
 @portal.get("/api/admin/calendar/settings")
