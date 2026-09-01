@@ -443,13 +443,29 @@ const renderPlaudDeviceRows = (items = [], total = 0) => {
       <td>${Number(item.participants_count || 0).toLocaleString("ko-KR")}명</td>
       <td>${escapeHtml(item.device_model || "PN0300")}</td>
       <td>${formatPlaudDate(item.meeting_date || item.received_at)}</td>
-      <td><div class="plaud-device-row-actions"><button class="plaud-row-button" data-plaud-device-detail="${escapeHtml(item.id)}">상세 보기</button>${item.can_reveal_title ? `<button class="plaud-row-button" data-plaud-device-excel="${escapeHtml(item.id)}">Excel</button>` : ""}</div></td>
+      <td><div class="plaud-device-row-actions"><button class="plaud-row-button" data-plaud-device-detail="${escapeHtml(item.id)}">상세 보기</button>${item.can_reveal_title ? `<button class="plaud-row-button" data-plaud-device-excel="${escapeHtml(item.id)}">Excel</button>` : ""}${item.can_delete ? `<button class="plaud-row-button danger" data-plaud-device-delete="${escapeHtml(item.id)}" data-plaud-device-title="${escapeHtml(title)}">삭제</button>` : ""}</div></td>
     </tr>`;
   }).join("");
   document.querySelectorAll("[data-plaud-device-detail]").forEach((button) => button.addEventListener("click", () => openPlaudDeviceMeetingDetail(button.dataset.plaudDeviceDetail)));
   document.querySelectorAll("[data-plaud-device-excel]").forEach((button) => button.addEventListener("click", () => {
     window.location.href = `/api/meetings/plaud-device/${encodeURIComponent(button.dataset.plaudDeviceExcel)}/excel`;
   }));
+  document.querySelectorAll("[data-plaud-device-delete]").forEach((button) => button.addEventListener("click", () => {
+    deletePlaudDeviceMeeting(button.dataset.plaudDeviceDelete, button.dataset.plaudDeviceTitle);
+  }));
+};
+
+const deletePlaudDeviceMeeting = async (meetingId, title = "이 회의록", closeDialog = false) => {
+  if (!meetingId || currentUser?.role !== "admin") return;
+  if (!window.confirm(`'${title || "이 회의록"}'을 삭제하시겠습니까?\n삭제한 회의록은 복구할 수 없습니다.`)) return;
+  try {
+    await plaudRequest(`/api/meetings/plaud-device/${encodeURIComponent(meetingId)}`, { method: "DELETE" });
+    if (closeDialog) $("#plaudDeviceMeetingDialog")?.close();
+    showToast("회의록을 삭제했습니다.");
+    await refreshPlaudDevicePage();
+  } catch (error) {
+    showToast(error.message || "회의록을 삭제하지 못했습니다.");
+  }
 };
 
 const refreshPlaudDevicePage = async () => {
@@ -499,7 +515,8 @@ const openPlaudDeviceMeetingDetail = async (meetingId) => {
         <article><h3>후속 조치사항</h3>${plaudDeviceListMarkup(meeting.action_items || [])}</article>
       </section>
       <section class="plaud-detail-content"><h3>전체 전사 내용</h3><div class="plaud-transcript-text">${escapeHtml(meeting.transcript || "전사 내용이 없습니다.").replace(/\n/g, "<br>")}</div></section>
-      ${meeting.can_reveal_title ? `<footer class="plaud-device-detail-actions"><a class="button primary" href="/api/meetings/plaud-device/${encodeURIComponent(meetingId)}/excel">회의록 Excel 다운로드</a></footer>` : ""}`;
+      ${meeting.can_reveal_title ? `<footer class="plaud-device-detail-actions"><button type="button" class="button danger" id="plaudDeviceDetailDelete">회의록 삭제</button><a class="button primary" href="/api/meetings/plaud-device/${encodeURIComponent(meetingId)}/excel">회의록 Excel 다운로드</a></footer>` : ""}`;
+    $("#plaudDeviceDetailDelete")?.addEventListener("click", () => deletePlaudDeviceMeeting(meetingId, title, true));
   } catch (error) {
     body.innerHTML = `<div class="plaud-detail-state failed"><i>!</i><b>기기 회의록을 불러오지 못했습니다.</b><p>${escapeHtml(error.message)}</p></div>`;
   }
@@ -527,7 +544,7 @@ const renderPlaudDeviceMeetingPage = async () => {
   plaudDeviceSearchQuery = "";
   plaudDeviceRevealTitles = false;
   pageContent.innerHTML = `
-    <section class="page-heading plaud-page-heading"><div><span class="eyebrow">COLLABORATION · PLAUD NOTE PRO</span><h1>회의록_Plaud(기기)</h1><p>PLAUD Note Pro에서 생성된 회의록을 Zapier로 받아 게시판과 Excel 양식으로 관리합니다.</p></div><div class="plaud-page-actions"><span id="plaudDeviceConnectionBadge" class="plaud-connection waiting"><i></i>Zapier 연결 확인 중</span><button id="plaudDeviceRefresh" type="button" class="button secondary">새로고침</button></div></section>
+    <section class="page-heading plaud-page-heading"><div><span class="eyebrow">COLLABORATION · PLAUD NOTE PRO</span><h1>회의록_Plaud(기기)</h1><p>PLAUD Note Pro에서 생성된 회의록을 Zapier로 받아 게시판과 Excel 양식으로 관리합니다.</p></div><div class="plaud-page-actions"><a class="plaud-web-link" href="https://web.plaud.ai/" target="_blank" rel="noopener noreferrer" aria-label="PLAUD Web 새 창에서 열기"><span class="plaud-web-icon" aria-hidden="true">P</span><span><b>PLAUD Web</b><small>web.plaud.ai</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M17 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5"/></svg></a><span id="plaudDeviceConnectionBadge" class="plaud-connection waiting"><i></i>Zapier 연결 확인 중</span><button id="plaudDeviceRefresh" type="button" class="button secondary">새로고침</button></div></section>
     <section class="plaud-stat-grid">
       <article><span>회의록 총 합계</span><strong data-plaud-device-stat="total">0</strong><small>누적 수신 건수</small></article>
       <article><span>오늘 합계</span><strong data-plaud-device-stat="today">0</strong><small>오늘 생성된 회의록</small></article>
