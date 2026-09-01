@@ -26,7 +26,8 @@ const menuGroups = [
     { id: "amarans", icon: "A", title: "아마란스", url: "https://gw.medpark.kr/" },
     { id: "meetings", icon: "☷", title: "회의록", children: [
       { id: "meetings_openai", title: "회의록_OpenAI", url: null },
-      { id: "meetings_plaud", title: "회의록_Plaud", url: null }
+      { id: "meetings_plaud", title: "회의록_Plaud", url: null },
+      { id: "meetings_plaud_device", title: "회의록_Plaud(기기)", url: null }
     ]},
     { id: "calendar", icon: "□", title: "일정(캘린더)" }
   ]},
@@ -72,6 +73,10 @@ let plaudStatusFilter = "";
 let plaudSearchQuery = "";
 let plaudConfig = null;
 let plaudPageLoading = false;
+let plaudDeviceConfig = null;
+let plaudDevicePageLoading = false;
+let plaudDeviceSearchQuery = "";
+let plaudDeviceRevealTitles = false;
 
 const plaudRequest = async (url, options = {}) => {
   const headers = { accept: "application/json", ...(options.headers || {}) };
@@ -406,12 +411,160 @@ const renderPlaudMeetingPage = async () => {
   plaudPollTimer = setInterval(() => refreshPlaudPage({ sync: true }), 15000);
 };
 
+const renderPlaudDeviceStats = (stats = {}) => {
+  const values = {
+    total: stats.total || 0,
+    today: stats.today || 0,
+    this_month: stats.this_month || 0,
+    completed: stats.completed || 0,
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    const host = $(`[data-plaud-device-stat="${key}"]`);
+    if (host) host.textContent = Number(value).toLocaleString("ko-KR");
+  });
+};
+
+const renderPlaudDeviceRows = (items = [], total = 0) => {
+  const body = $("#plaudDeviceMeetingRows");
+  const count = $("#plaudDeviceBoardCount");
+  if (count) count.textContent = `${Number(total || 0).toLocaleString("ko-KR")}건`;
+  if (!body) return;
+  if (!items.length) {
+    body.innerHTML = '<tr><td colspan="7"><div class="plaud-empty"><i>⌁</i><b>수신된 기기 회의록이 없습니다.</b><span>PLAUD Note Pro 회의록을 Zapier로 전송하면 이곳에 표시됩니다.</span></div></td></tr>';
+    return;
+  }
+  body.innerHTML = items.map((item) => {
+    const status = plaudStatusMeta(item.status);
+    const title = item.title_revealed && item.title ? item.title : item.masked_title;
+    return `<tr>
+      <td><div class="plaud-masked-title"><b>${escapeHtml(title)}</b><small>${item.title_revealed ? "관리자 마스킹 해제" : "제목 마스킹 적용"}</small></div></td>
+      <td><span class="plaud-status ${status.className}"><i></i>${status.label}</span></td>
+      <td>${formatPlaudDuration(item.duration_seconds)}</td>
+      <td>${Number(item.participants_count || 0).toLocaleString("ko-KR")}명</td>
+      <td>${escapeHtml(item.device_model || "PN0300")}</td>
+      <td>${formatPlaudDate(item.meeting_date || item.received_at)}</td>
+      <td><div class="plaud-device-row-actions"><button class="plaud-row-button" data-plaud-device-detail="${escapeHtml(item.id)}">상세 보기</button>${item.can_reveal_title ? `<button class="plaud-row-button" data-plaud-device-excel="${escapeHtml(item.id)}">Excel</button>` : ""}</div></td>
+    </tr>`;
+  }).join("");
+  document.querySelectorAll("[data-plaud-device-detail]").forEach((button) => button.addEventListener("click", () => openPlaudDeviceMeetingDetail(button.dataset.plaudDeviceDetail)));
+  document.querySelectorAll("[data-plaud-device-excel]").forEach((button) => button.addEventListener("click", () => {
+    window.location.href = `/api/meetings/plaud-device/${encodeURIComponent(button.dataset.plaudDeviceExcel)}/excel`;
+  }));
+};
+
+const refreshPlaudDevicePage = async () => {
+  if (plaudDevicePageLoading || currentPage !== "meetings_plaud_device") return;
+  plaudDevicePageLoading = true;
+  try {
+    const params = new URLSearchParams({ page: "1", page_size: "50" });
+    if (plaudDeviceSearchQuery) params.set("query", plaudDeviceSearchQuery);
+    if (plaudDeviceRevealTitles) params.set("reveal_titles", "1");
+    const [stats, list] = await Promise.all([
+      plaudRequest("/api/meetings/plaud-device/stats"),
+      plaudRequest(`/api/meetings/plaud-device?${params}`),
+    ]);
+    if (currentPage !== "meetings_plaud_device") return;
+    renderPlaudDeviceStats(stats);
+    renderPlaudDeviceRows(list.items || [], list.total || 0);
+  } catch (error) {
+    const body = $("#plaudDeviceMeetingRows");
+    if (body) body.innerHTML = `<tr><td colspan="7"><div class="plaud-empty error"><i>!</i><b>기기 회의록을 불러오지 못했습니다.</b><span>${escapeHtml(error.message)}</span></div></td></tr>`;
+  } finally {
+    plaudDevicePageLoading = false;
+  }
+};
+
+const plaudDeviceListMarkup = (items = [], emptyMessage = "-") => items.length
+  ? `<ul class="plaud-device-detail-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+  : `<p class="plaud-device-detail-empty">${escapeHtml(emptyMessage)}</p>`;
+
+const openPlaudDeviceMeetingDetail = async (meetingId) => {
+  const dialog = $("#plaudDeviceMeetingDialog");
+  const body = $("#plaudDeviceMeetingDetailBody");
+  if (!dialog || !body) return;
+  body.innerHTML = '<div class="plaud-detail-loading"><span class="spinner"></span><p>기기 회의록을 불러오는 중입니다.</p></div>';
+  dialog.showModal();
+  try {
+    const params = plaudDeviceRevealTitles ? "?reveal_titles=1" : "";
+    const result = await plaudRequest(`/api/meetings/plaud-device/${encodeURIComponent(meetingId)}${params}`);
+    const meeting = result.meeting || {};
+    const status = plaudStatusMeta(meeting.status);
+    const title = meeting.title_revealed && meeting.title ? meeting.title : meeting.masked_title;
+    body.innerHTML = `<header class="plaud-detail-heading"><div><span class="eyebrow">PLAUD NOTE PRO · ZAPIER</span><h2>${escapeHtml(title || "기기 회의록")}</h2><p>${meeting.title_revealed ? "관리자 옵션으로 원문 제목을 표시합니다." : "제목 마스킹이 적용되었습니다."}</p></div><span class="plaud-status ${status.className}"><i></i>${status.label}</span></header>
+      <div class="plaud-detail-meta"><span><b>회의 일시</b>${formatPlaudDate(meeting.meeting_date || meeting.received_at)}</span><span><b>녹음 기기</b>${escapeHtml(meeting.device_model || "PN0300")}</span><span><b>녹음 길이</b>${formatPlaudDuration(meeting.duration_seconds)}</span><span><b>참석자</b>${Number(meeting.participants?.length || 0).toLocaleString("ko-KR")}명</span></div>
+      <section class="plaud-device-detail-grid">
+        <article><h3>참석자</h3>${plaudDeviceListMarkup(meeting.participants || [])}</article>
+        <article><h3>회의 요약</h3><p>${escapeHtml(meeting.summary || "-").replace(/\n/g, "<br>")}</p></article>
+        <article><h3>주요 결정사항</h3>${plaudDeviceListMarkup(meeting.decisions || [])}</article>
+        <article><h3>후속 조치사항</h3>${plaudDeviceListMarkup(meeting.action_items || [])}</article>
+      </section>
+      <section class="plaud-detail-content"><h3>전체 전사 내용</h3><div class="plaud-transcript-text">${escapeHtml(meeting.transcript || "전사 내용이 없습니다.").replace(/\n/g, "<br>")}</div></section>
+      ${meeting.can_reveal_title ? `<footer class="plaud-device-detail-actions"><a class="button primary" href="/api/meetings/plaud-device/${encodeURIComponent(meetingId)}/excel">회의록 Excel 다운로드</a></footer>` : ""}`;
+  } catch (error) {
+    body.innerHTML = `<div class="plaud-detail-state failed"><i>!</i><b>기기 회의록을 불러오지 못했습니다.</b><p>${escapeHtml(error.message)}</p></div>`;
+  }
+};
+
+const bindPlaudDevicePage = () => {
+  let searchTimer;
+  $("#plaudDeviceSearch")?.addEventListener("input", (event) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      plaudDeviceSearchQuery = event.target.value.trim();
+      refreshPlaudDevicePage();
+    }, 250);
+  });
+  $("#plaudDeviceRevealTitles")?.addEventListener("change", (event) => {
+    plaudDeviceRevealTitles = Boolean(event.target.checked);
+    refreshPlaudDevicePage();
+    showToast(plaudDeviceRevealTitles ? "관리자 권한으로 제목 마스킹을 해제했습니다." : "제목 마스킹을 다시 적용했습니다.");
+  });
+  $("#plaudDeviceRefresh")?.addEventListener("click", refreshPlaudDevicePage);
+  $("#plaudDeviceMeetingDialogClose")?.addEventListener("click", () => $("#plaudDeviceMeetingDialog").close());
+};
+
+const renderPlaudDeviceMeetingPage = async () => {
+  plaudDeviceSearchQuery = "";
+  plaudDeviceRevealTitles = false;
+  pageContent.innerHTML = `
+    <section class="page-heading plaud-page-heading"><div><span class="eyebrow">COLLABORATION · PLAUD NOTE PRO</span><h1>회의록_Plaud(기기)</h1><p>PLAUD Note Pro에서 생성된 회의록을 Zapier로 받아 게시판과 Excel 양식으로 관리합니다.</p></div><div class="plaud-page-actions"><span id="plaudDeviceConnectionBadge" class="plaud-connection waiting"><i></i>Zapier 연결 확인 중</span><button id="plaudDeviceRefresh" type="button" class="button secondary">새로고침</button></div></section>
+    <section class="plaud-stat-grid">
+      <article><span>회의록 총 합계</span><strong data-plaud-device-stat="total">0</strong><small>누적 수신 건수</small></article>
+      <article><span>오늘 합계</span><strong data-plaud-device-stat="today">0</strong><small>오늘 생성된 회의록</small></article>
+      <article><span>이번 달 합계</span><strong data-plaud-device-stat="this_month">0</strong><small>이번 달 생성 건수</small></article>
+      <article><span>작성 완료</span><strong data-plaud-device-stat="completed">0</strong><small>Excel 작성 가능</small></article>
+    </section>
+    <section class="content-panel plaud-device-flow-panel">
+      <div><span class="eyebrow">DEVICE WORKFLOW</span><h2>PLAUD Note Pro → Zapier → MedPark One → Excel</h2><p id="plaudDeviceConfigMessage">연동 설정을 확인하고 있습니다.</p></div>
+      <dl><div><dt>기기</dt><dd>PLAUD Note Pro · PN0300</dd></div><div><dt>수신 주소</dt><dd id="plaudDeviceWebhookPath">확인 중</dd></div><div><dt>제목 보안</dt><dd>기본 마스킹 · 관리자 옵션 해제</dd></div></dl>
+    </section>
+    <section class="content-panel plaud-board-panel">
+      <header class="plaud-board-header"><div><span class="eyebrow">DEVICE MEETING BOARD</span><h2>기기 회의록 게시판 <small id="plaudDeviceBoardCount">0건</small></h2></div><div class="plaud-board-tools"><input id="plaudDeviceSearch" placeholder="회의 제목 검색" />${currentUser?.role === "admin" ? '<label class="plaud-device-mask-toggle"><input id="plaudDeviceRevealTitles" type="checkbox" /><span>제목 마스킹 해제</span></label>' : '<span class="plaud-device-mask-note">제목 마스킹 적용</span>'}</div></header>
+      <div class="plaud-table-wrap"><table class="data-table plaud-table plaud-device-table"><thead><tr><th>제목</th><th>상태</th><th>녹음 길이</th><th>참석자</th><th>기기</th><th>회의 일시</th><th></th></tr></thead><tbody id="plaudDeviceMeetingRows"><tr><td colspan="7"><div class="plaud-empty"><span class="spinner"></span><b>기기 회의록을 불러오는 중입니다.</b></div></td></tr></tbody></table></div>
+    </section>
+    <dialog id="plaudDeviceMeetingDialog" class="plaud-meeting-dialog"><button id="plaudDeviceMeetingDialogClose" class="plaud-dialog-close" aria-label="닫기">×</button><div id="plaudDeviceMeetingDetailBody"></div></dialog>`;
+  bindPlaudDevicePage();
+  try {
+    plaudDeviceConfig = await plaudRequest("/api/meetings/plaud-device/config");
+    if (currentPage !== "meetings_plaud_device") return;
+    const badge = $("#plaudDeviceConnectionBadge");
+    badge.className = `plaud-connection ${plaudDeviceConfig.configured ? "ready" : "waiting"}`;
+    badge.innerHTML = `<i></i>${plaudDeviceConfig.configured ? "Zapier 수신 준비 완료" : "Zapier 보안키 등록 필요"}`;
+    $("#plaudDeviceConfigMessage").textContent = plaudDeviceConfig.message;
+    $("#plaudDeviceWebhookPath").textContent = plaudDeviceConfig.webhook_path;
+  } catch (error) {
+    showToast(error.message || "PLAUD 기기 연동 상태를 확인하지 못했습니다.");
+  }
+  await refreshPlaudDevicePage();
+  plaudPollTimer = setInterval(refreshPlaudDevicePage, 30000);
+};
+
 
 const builtInEditableMenuIds = new Set([
   "group_workspace", "group_business", "group_collaboration",
   "management", "management_ar", "management_hr", "management_routine",
   "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
-  "technology", "technology_focus", "amarans", "meetings", "meetings_openai", "meetings_plaud", "calendar", "tf", "tf_ar"
+  "technology", "technology_focus", "amarans", "meetings", "meetings_openai", "meetings_plaud", "meetings_plaud_device", "calendar", "tf", "tf_ar"
 ]);
 const editableTopMenuItems = () => menuGroups.flatMap((group) => group.items).filter((item) => item.id !== "dashboard" && item.id !== "admin");
 const editableMenuItems = () => editableTopMenuItems().flatMap((item) => [item, ...(item.children || [])]);
@@ -614,6 +767,7 @@ const navigate = (page) => {
   else if (page === "admin_calendar") renderCalendarSettings();
   else if (page === "calendar") renderCalendarPage();
   else if (page === "meetings_plaud") renderPlaudMeetingPage();
+  else if (page === "meetings_plaud_device") renderPlaudDeviceMeetingPage();
   else renderPlaceholder(title, page);
   closeSidebar();
 };
