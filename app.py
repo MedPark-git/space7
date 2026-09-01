@@ -263,6 +263,14 @@ def plaud_device_meeting_get(meeting_id):
     })
 
 
+@portal.delete("/api/meetings/plaud-device/<uuid:meeting_id>")
+def plaud_device_meeting_delete(meeting_id):
+    actor = current_user(True)
+    return json_response(
+        plaud_device.delete_meeting(str(meeting_id), actor, request_ip())
+    )
+
+
 @portal.get("/api/meetings/plaud-device/<uuid:meeting_id>/excel")
 def plaud_device_meeting_excel(meeting_id):
     actor = current_user()
