@@ -38,7 +38,7 @@ EDITABLE_MENU_IDS = {
     "group_workspace", "group_business", "group_collaboration",
     "management", "management_ar", "management_hr", "management_routine",
     "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
-    "technology", "technology_focus", "amarans", "meetings", "meetings_openai", "meetings_plaud", "calendar", "tf", "tf_ar",
+    "technology", "technology_focus", "amarans", "meetings", "meetings_openai", "meetings_plaud", "meetings_plaud_device", "calendar", "tf", "tf_ar",
 }
 MENU_GROUP_IDS = ["workspace", "business", "collaboration"]
 BUILTIN_MEMBERSHIP = {
@@ -47,7 +47,7 @@ BUILTIN_MEMBERSHIP = {
     "business": ["management", "marketing", "technology"],
     "collaboration": ["tf", "amarans", "meetings", "calendar"],
     "tf": ["tf_ar"],
-    "meetings": ["meetings_openai", "meetings_plaud"],
+    "meetings": ["meetings_openai", "meetings_plaud", "meetings_plaud_device"],
     "management": ["management_ar", "management_hr", "management_routine"],
     "marketing": ["marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global"],
     "technology": ["technology_focus"],
@@ -262,6 +262,34 @@ CREATE INDEX IF NOT EXISTS idx_plaud_meetings_created_at ON plaud_meetings (crea
 CREATE INDEX IF NOT EXISTS idx_plaud_meetings_status ON plaud_meetings (status, updated_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_plaud_meetings_transcription_id
   ON plaud_meetings (plaud_transcription_id) WHERE plaud_transcription_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS plaud_device_meetings (
+  id uuid PRIMARY KEY, external_id varchar(255) UNIQUE NOT NULL,
+  source varchar(30) NOT NULL DEFAULT 'plaud_note_pro', device_model varchar(50) NOT NULL DEFAULT 'PN0300',
+  title varchar(200) NOT NULL, meeting_date timestamptz, duration_seconds numeric NOT NULL DEFAULT 0,
+  participants jsonb NOT NULL DEFAULT '[]'::jsonb, transcript text, summary text,
+  decisions jsonb NOT NULL DEFAULT '[]'::jsonb, action_items jsonb NOT NULL DEFAULT '[]'::jsonb,
+  status varchar(20) NOT NULL DEFAULT 'completed', source_url text,
+  received_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS external_id varchar(255);
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS source varchar(30) NOT NULL DEFAULT 'plaud_note_pro';
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS device_model varchar(50) NOT NULL DEFAULT 'PN0300';
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS title varchar(200);
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS meeting_date timestamptz;
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS duration_seconds numeric NOT NULL DEFAULT 0;
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS participants jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS transcript text;
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS summary text;
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS decisions jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS action_items jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS status varchar(20) NOT NULL DEFAULT 'completed';
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS source_url text;
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS received_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE plaud_device_meetings ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+CREATE UNIQUE INDEX IF NOT EXISTS idx_plaud_device_meetings_external_id
+  ON plaud_device_meetings (external_id) WHERE external_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_plaud_device_meetings_date
+  ON plaud_device_meetings (meeting_date DESC, received_at DESC);
 """
 
 
@@ -280,13 +308,18 @@ def _database_admin_is_ready():
         "language", "duration_seconds", "transcript", "transcript_segments",
         "error_message", "created_at", "updated_at", "completed_at",
     }
+    required_device_columns = {
+        "id", "external_id", "source", "device_model", "title", "meeting_date",
+        "duration_seconds", "participants", "transcript", "summary", "decisions",
+        "action_items", "status", "source_url", "received_at", "updated_at",
+    }
     try:
         with connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SET LOCAL statement_timeout = '3000ms'")
-                cur.execute("SELECT to_regclass('public.users'), to_regclass('public.plaud_meetings')")
-                users_table, plaud_table = cur.fetchone()
-                if users_table is None or plaud_table is None:
+                cur.execute("SELECT to_regclass('public.users'), to_regclass('public.plaud_meetings'), to_regclass('public.plaud_device_meetings')")
+                users_table, plaud_table, device_table = cur.fetchone()
+                if users_table is None or plaud_table is None or device_table is None:
                     return False
                 cur.execute(
                     """SELECT column_name FROM information_schema.columns
@@ -294,6 +327,13 @@ def _database_admin_is_ready():
                 )
                 plaud_columns = {row[0] for row in cur.fetchall()}
                 if not required_plaud_columns.issubset(plaud_columns):
+                    return False
+                cur.execute(
+                    """SELECT column_name FROM information_schema.columns
+                       WHERE table_schema='public' AND table_name='plaud_device_meetings'"""
+                )
+                device_columns = {row[0] for row in cur.fetchall()}
+                if not required_device_columns.issubset(device_columns):
                     return False
                 cur.execute("SELECT EXISTS(SELECT 1 FROM users WHERE status='active' AND role='admin')")
                 return bool(cur.fetchone()[0])
@@ -356,6 +396,7 @@ def _initialize_database_once():
                 "management": "경영사업본부", "marketing": "마케팅 사업본부", "technology": "기술사업본부",
                 "amarans": "아마란스", "meetings": "회의록", "calendar": "일정(캘린더)",
                 "meetings_openai": "회의록_OpenAI", "meetings_plaud": "회의록_Plaud",
+                "meetings_plaud_device": "회의록_Plaud(기기)",
                 "tf": "TF", "tf_ar": "미수채권",
             }
             for menu_id, label in labels.items():
