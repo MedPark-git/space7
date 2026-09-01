@@ -79,6 +79,11 @@ class PortalSmokeTest(unittest.TestCase):
             self.assertEqual(excel.status_code, 200)
             self.assertIn("spreadsheetml", excel.content_type)
 
+            deleted = self.client.delete(f"/api/meetings/plaud-device/{meeting_id}")
+            self.assertEqual(deleted.status_code, 200)
+            self.assertTrue(deleted.get_json()["success"])
+            self.assertEqual(self.client.get("/api/meetings/plaud-device").get_json()["total"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
