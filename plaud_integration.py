@@ -93,7 +93,12 @@ def _open_plaud_request(req, timeout, stage):
 def _http_json(method, path, *, headers=None, payload=None, form=None, timeout=20, stage="PLAUD API"):
     credentials = _credentials()
     body = None
-    request_headers = {"Accept": "application/json", **(headers or {})}
+    request_headers = {
+        "Accept": "application/json",
+        "User-Agent": "curl/8.5.0",
+        "Connection": "close",
+        **(headers or {}),
+    }
     if payload is not None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         request_headers.setdefault("Content-Type", "application/json")
@@ -197,6 +202,8 @@ def _test_transcription_credentials():
         f"{credentials['host']}{path}",
         headers={
             "Accept": "application/json",
+            "User-Agent": "curl/8.5.0",
+            "Connection": "close",
             "X-Client-Id": credentials["client_id"],
             "X-Client-Api-Key": credentials["api_key"],
         },
