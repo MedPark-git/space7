@@ -16,7 +16,7 @@ core.init_database()
 
 portal = Flask(__name__, static_folder=None)
 portal.json.ensure_ascii = False
-portal.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024
+portal.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
 
 
 def payload():
@@ -197,6 +197,22 @@ def plaud_meeting_get(meeting_id):
 def plaud_upload_start():
     actor = current_user()
     return json_response(plaud.start_upload(payload(), actor))
+
+
+@portal.post("/api/meetings/plaud/uploads/part")
+def plaud_upload_part():
+    actor = current_user()
+    chunk_file = request.files.get("chunk")
+    if not chunk_file:
+        raise core.AppError("전송할 파일 조각을 찾을 수 없습니다.")
+    chunk = chunk_file.stream.read(plaud.MAX_PROXY_CHUNK_SIZE + 1)
+    return json_response(plaud.upload_part(
+        request.form.get("upload_url"),
+        request.form.get("proxy_token"),
+        request.form.get("part_number"),
+        chunk,
+        actor,
+    ))
 
 
 @portal.post("/api/meetings/plaud/uploads/complete")
