@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -299,25 +300,31 @@ def _validate_presigned_upload_url(value):
     except (ValueError, TypeError) as exc:
         raise core.AppError("PLAUD 업로드 주소 형식이 올바르지 않습니다.", 400) from exc
     host = (parsed.hostname or "").lower().rstrip(".")
-    is_s3_host = (
-        host == "s3.amazonaws.com"
-        or host.startswith("s3.")
-        or ".s3." in host
-        or host.endswith(".s3.amazonaws.com")
-    )
-    query_keys = {key.lower() for key, _ in urlparse.parse_qsl(parsed.query, keep_blank_values=True)}
     if (
         parsed.scheme != "https"
-        or not host.endswith(".amazonaws.com")
-        or not is_s3_host
+        or not host
         or parsed.username
         or parsed.password
         or port not in (None, 443)
-        or "x-amz-signature" not in query_keys
+        or host == "localhost"
+        or host.endswith(".localhost")
+        or host.endswith(".local")
+    ):
+        raise core.AppError("허용되지 않은 PLAUD 업로드 주소입니다.", 400)
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address and (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_multicast
+        or address.is_unspecified
     ):
         raise core.AppError("허용되지 않은 PLAUD 업로드 주소입니다.", 400)
     return upload_url
-
 
 def _make_upload_proxy_token(upload_url, user_id, part_number):
     expires_at = int(time.time()) + PROXY_TOKEN_LIFETIME
