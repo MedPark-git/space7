@@ -51,6 +51,20 @@ def configured():
     return all(credentials[key] for key in ("client_id", "client_secret", "api_key"))
 
 
+def _plaud_user_id(user):
+    override = (os.environ.get("PLAUD_USER_ID") or "").strip()
+    if override:
+        return override[:255]
+    if isinstance(user, dict):
+        candidate = user.get("email") or user.get("username") or user.get("id")
+    else:
+        candidate = user
+    value = str(candidate or "").strip()
+    if not value:
+        raise core.AppError("PLAUD 사용자 식별 정보를 확인할 수 없습니다.", 400)
+    return value[:255]
+
+
 def configuration_payload():
     ready = configured()
     return {
@@ -127,7 +141,12 @@ def _http_json(method, path, *, headers=None, payload=None, form=None, timeout=2
         detail = _safe_upstream_message(raw, f"HTTP {exc.code}")
         logger.warning("PLAUD request rejected stage=%s status=%s detail=%s", stage, exc.code, detail)
         if exc.code in {401, 403}:
-            if stage.startswith("1/3"):
+            if "DEVICE_MISSING" in detail.upper():
+                message = (
+                    f"{stage}: PLAUD가 업로드 사용자와 등록 디바이스 연결을 찾지 못했습니다. "
+                    "포털 사용자 이메일과 PLAUD Partner User ID를 확인해 주세요. (DEVICE_MISSING)"
+                )
+            elif stage.startswith("1/3"):
                 message = (
                     f"{stage}: PLAUD가 AI SPACE 서버 요청을 거부했습니다. "
                     f"HTTP {exc.code} ({detail})"
@@ -237,14 +256,16 @@ def _test_transcription_credentials():
         raise core.AppError("3/3 Transcription API 인증: PLAUD 서비스에 연결할 수 없습니다.", 503) from exc
 
 
-def test_connection(user_id):
+def test_connection(user):
     _require_configured()
-    logger.info("PLAUD connection test started user_id=%s", str(user_id))
+    portal_user_id = user.get("id") if isinstance(user, dict) else user
+    plaud_user_id = _plaud_user_id(user)
+    logger.info("PLAUD connection test started user_id=%s", str(portal_user_id))
     _partner_token()
-    _user_token(user_id)
+    _user_token(plaud_user_id)
     _test_transcription_credentials()
     checked_at = datetime.now(timezone.utc).isoformat()
-    logger.info("PLAUD connection test completed user_id=%s", str(user_id))
+    logger.info("PLAUD connection test completed user_id=%s", str(portal_user_id))
     return {
         "connected": True,
         "provider": "PLAUD",
@@ -365,7 +386,8 @@ def start_upload(data, user):
     if file_size > MAX_FILE_SIZE:
         raise core.AppError("녹음파일은 최대 2GB까지 업로드할 수 있습니다.")
     logger.info("PLAUD upload start user_id=%s file_type=%s file_size=%s", str(user["id"]), file_type, file_size)
-    token = _user_token(user["id"])
+    plaud_user_id = _plaud_user_id(user)
+    token = _user_token(plaud_user_id)
     result = _http_json(
         "POST",
         "/developer/api/open/partner/files/upload/generate-presigned-urls",
@@ -535,7 +557,8 @@ def complete_upload(data, user, ip=None):
         if not etag:
             raise core.AppError("업로드 조각 확인값을 찾을 수 없습니다.")
         normalized_parts.append({"PartNumber": number, "ETag": etag})
-    token = _user_token(user["id"])
+    plaud_user_id = _plaud_user_id(user)
+    token = _user_token(plaud_user_id)
     complete_result = _http_json(
         "POST",
         "/developer/api/open/partner/files/upload/complete-upload",
