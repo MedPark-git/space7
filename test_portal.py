@@ -5,13 +5,17 @@ from unittest.mock import patch
 
 os.environ.setdefault("INITIAL_ADMIN_PASSWORD", "LocalValidationOnly!234")
 
-from app import plaud_device, portal  # noqa: E402
+from app import core, plaud_device, portal  # noqa: E402
 
 
 class PortalSmokeTest(unittest.TestCase):
     def setUp(self):
         self.client = portal.test_client()
         plaud_device._memory_meetings.clear()
+        core._memory["labels"].clear()
+        core._memory["urls"].clear()
+        core._memory["order"].clear()
+        core._memory["custom"].clear()
 
     def login(self):
         response = self.client.post(
@@ -83,6 +87,45 @@ class PortalSmokeTest(unittest.TestCase):
             self.assertEqual(deleted.status_code, 200)
             self.assertTrue(deleted.get_json()["success"])
             self.assertEqual(self.client.get("/api/meetings/plaud-device").get_json()["total"], 0)
+
+    def test_admin_can_update_menu_url_and_delete_custom_menu(self):
+        self.login()
+        updated = self.client.patch(
+            "/api/admin/menu",
+            json={
+                "labels": {"management_routine": "경영 업무현황"},
+                "urls": {"management_routine": "https://example.com/management"},
+            },
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.get_json()["urls"]["management_routine"], "https://example.com/management")
+
+        invalid = self.client.patch(
+            "/api/admin/menu",
+            json={"labels": {"management_routine": "경영 업무현황"}, "urls": {"management_routine": "javascript:alert(1)"}},
+        )
+        self.assertEqual(invalid.status_code, 400)
+
+        created = self.client.post(
+            "/api/admin/menu",
+            json={"group_id": "collaboration", "parent_id": "", "label": "삭제 테스트", "url": "https://example.com/test"},
+        )
+        self.assertEqual(created.status_code, 201)
+        menu_id = created.get_json()["item"]["id"]
+
+        edited = self.client.patch(
+            "/api/admin/menu",
+            json={"labels": {menu_id: "수정 테스트"}, "urls": {menu_id: "/internal-test"}},
+        )
+        self.assertEqual(edited.status_code, 200)
+        edited_item = next(item for item in edited.get_json()["customItems"] if item["id"] == menu_id)
+        self.assertEqual(edited_item["label"], "수정 테스트")
+        self.assertEqual(edited_item["url"], "/internal-test")
+
+        deleted = self.client.delete(f"/api/admin/menu/{menu_id}")
+        self.assertEqual(deleted.status_code, 200)
+        self.assertTrue(deleted.get_json()["success"])
+        self.assertFalse(any(item["id"] == menu_id for item in deleted.get_json()["customItems"]))
 
 
 if __name__ == "__main__":
