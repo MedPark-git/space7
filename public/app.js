@@ -6,7 +6,7 @@ const menuGroups = [
     { id: "management", icon: "▰", title: "경영사업본부", children: [
       { id: "management_ar", title: "미수채권 관리시스템", url: "https://medprk-ar-dashboard.mycafe24.ai/" },
       { id: "management_hr", title: "HR", url: "https://medprk-medpark-hr-maps.mycafe24.ai/" },
-      { id: "management_routine", title: "경영 루틴 업무 시스템", url: null }
+      { id: "management_routine", title: "경영 업무현황", url: "https://medprk-management-task.mycafe24.ai/" }
     ]},
     { id: "marketing", icon: "◫", title: "마케팅 사업본부", children: [
       { id: "marketing_allo", title: "국내영업 · MedPark-Allo", url: "https://medprk-medpark-allo.mycafe24.ai/" },
