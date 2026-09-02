@@ -14,6 +14,7 @@ class PortalSmokeTest(unittest.TestCase):
         plaud_device._memory_meetings.clear()
         core._memory["labels"].clear()
         core._memory["urls"].clear()
+        core._memory["icons"].clear()
         core._memory["order"].clear()
         core._memory["custom"].clear()
 
@@ -95,14 +96,16 @@ class PortalSmokeTest(unittest.TestCase):
             json={
                 "labels": {"management_routine": "경영 업무현황"},
                 "urls": {"management_routine": "https://example.com/management"},
+                "icons": {"management_routine": "M"},
             },
         )
         self.assertEqual(updated.status_code, 200)
         self.assertEqual(updated.get_json()["urls"]["management_routine"], "https://example.com/management")
+        self.assertEqual(updated.get_json()["icons"]["management_routine"], "M")
 
         invalid = self.client.patch(
             "/api/admin/menu",
-            json={"labels": {"management_routine": "경영 업무현황"}, "urls": {"management_routine": "javascript:alert(1)"}},
+            json={"labels": {"management_routine": "경영 업무현황"}, "urls": {"management_routine": "javascript:alert(1)"}, "icons": {}},
         )
         self.assertEqual(invalid.status_code, 400)
 
@@ -115,12 +118,13 @@ class PortalSmokeTest(unittest.TestCase):
 
         edited = self.client.patch(
             "/api/admin/menu",
-            json={"labels": {menu_id: "수정 테스트"}, "urls": {menu_id: "/internal-test"}},
+            json={"labels": {menu_id: "수정 테스트"}, "urls": {menu_id: "/internal-test"}, "icons": {menu_id: "T"}},
         )
         self.assertEqual(edited.status_code, 200)
         edited_item = next(item for item in edited.get_json()["customItems"] if item["id"] == menu_id)
         self.assertEqual(edited_item["label"], "수정 테스트")
         self.assertEqual(edited_item["url"], "/internal-test")
+        self.assertEqual(edited_item["icon"], "T")
 
         deleted = self.client.delete(f"/api/admin/menu/{menu_id}")
         self.assertEqual(deleted.status_code, 200)
