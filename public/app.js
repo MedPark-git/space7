@@ -598,13 +598,14 @@ const sortMenuItems = (items, scope, order = {}) => items
   })
   .map(({ item }) => item);
 
-const applyMenuConfig = ({ labels = {}, customItems = [], order = {} } = {}) => {
+const applyMenuConfig = ({ labels = {}, urls = {}, customItems = [], order = {} } = {}) => {
   menuGroups.forEach((group) => {
     group.items = group.items.filter((item) => !item.isCustom);
     group.items.forEach((item) => { if (item.children) item.children = item.children.filter((child) => !child.isCustom); });
   });
   editableMenuItems().forEach((item) => {
     if (typeof labels[item.id] === "string" && labels[item.id].trim()) item.title = labels[item.id].trim();
+    if (Object.prototype.hasOwnProperty.call(urls, item.id)) item.url = typeof urls[item.id] === "string" && urls[item.id].trim() ? urls[item.id].trim() : null;
   });
   configurableMenuGroups().forEach((group) => {
     const label = labels[`group_${group.id}`];
@@ -1171,6 +1172,20 @@ const updateMenuCreateParentOptions = () => {
   parentSelect.innerHTML = `<option value="">${escapeHtml(group?.label || "선택한 최상단")} 바로 아래</option>${(group?.items || []).map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)} 하위</option>`).join("")}`;
 };
 
+const menuUrlFieldMarkup = (item) => `<label class="menu-url-label"><span>연결 URL <small>비우면 포털 내부 화면</small></span><input name="url__${escapeHtml(item.id)}" value="${escapeHtml(item.url || "")}" inputmode="url" placeholder="https:// 또는 /내부경로" /></label>`;
+
+const menuDeleteButtonMarkup = (item) => item.isCustom
+  ? `<button type="button" class="menu-delete-button" data-menu-delete="${escapeHtml(item.id)}" data-menu-title="${escapeHtml(item.title)}">삭제</button>`
+  : "";
+
+const menuEditEntryMarkup = (item, label) => `<div class="menu-edit-entry">
+  <div class="menu-edit-field-grid ${item.children?.length ? "single" : ""}">
+    <label><span>${label}</span><input name="${escapeHtml(item.id)}" value="${escapeHtml(item.title)}" minlength="1" maxlength="40" required /></label>
+    ${item.children?.length ? "" : menuUrlFieldMarkup(item)}
+  </div>
+  ${menuDeleteButtonMarkup(item)}
+</div>`;
+
 const renderAdminTab = (tab) => {
   const body = $("#adminBody");
   const addButton = $("#addEmployee");
@@ -1192,7 +1207,7 @@ const renderAdminTab = (tab) => {
     body.innerHTML = `
       <div class="menu-admin-layout">
         <form id="menuLabelsForm" class="menu-labels-form">
-          <div class="menu-manager-heading"><div><h2>카테고리 이름 관리</h2><p>최상위·상위·하위 카테고리 이름과 표시 순서를 함께 관리합니다.</p></div><button class="button primary" type="submit">이름·순서 저장</button></div>
+          <div class="menu-manager-heading"><div><h2>카테고리·연결 관리</h2><p>카테고리 이름, 연결 URL과 표시 순서를 함께 관리합니다.</p></div><button class="button primary" type="submit">정보·순서 저장</button></div>
           <section class="menu-group-name-editor">
             <h3>최상위 카테고리</h3>
             <div class="menu-group-name-grid">${configurableMenuGroups().map((group) => `
@@ -1201,9 +1216,9 @@ const renderAdminTab = (tab) => {
           </section>
           <div class="menu-label-groups">${editableTopMenuItems().map((parent) => `
             <section class="menu-edit-group">
-              <label class="top-menu-label"><span>상위 카테고리</span><input name="${escapeHtml(parent.id)}" value="${escapeHtml(parent.title)}" minlength="1" maxlength="40" required /></label>
+              ${menuEditEntryMarkup(parent, "상위 카테고리")}
               <div class="child-menu-list">${(parent.children || []).length ? parent.children.map((child) => `
-                <label><span>하위 카테고리${child.url ? ` · 연결됨` : ""}</span><input name="${escapeHtml(child.id)}" value="${escapeHtml(child.title)}" minlength="1" maxlength="40" required /></label>`).join("") : '<p class="empty-child-menu">등록된 하위 카테고리가 없습니다.</p>'}</div>
+                ${menuEditEntryMarkup(child, `하위 카테고리${child.url ? " · 연결됨" : ""}`)}`).join("") : '<p class="empty-child-menu">등록된 하위 카테고리가 없습니다.</p>'}</div>
             </section>`).join("")}</div>
           <p id="menuLabelsError" class="form-error"></p>
         </form>
@@ -1214,7 +1229,7 @@ const renderAdminTab = (tab) => {
             <label>최상단 카테고리<select id="menuCreateGroup" name="group_id" required>${configurableMenuGroups().map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.label)}</option>`).join("")}</select></label>
             <label>등록 위치<select id="menuCreateParent" name="parent_id"></select></label>
             <label>카테고리 이름<input name="label" minlength="1" maxlength="40" placeholder="새 카테고리 이름" required /></label>
-            <label>연결 URL <small>선택</small><input name="url" type="url" placeholder="https://" /></label>
+            <label>연결 URL <small>선택</small><input name="url" inputmode="url" placeholder="https:// 또는 /내부경로" /></label>
             <label>아이콘 <small>선택 · 최상단 바로 아래 등록용</small><input name="icon" maxlength="2" placeholder="◇" /></label>
             <p id="menuCreateError" class="form-error"></p>
             <button class="button primary full" type="submit">＋ 카테고리 등록</button>
@@ -1226,6 +1241,7 @@ const renderAdminTab = (tab) => {
     $("#menuCreateGroup").addEventListener("change", updateMenuCreateParentOptions);
     updateMenuCreateParentOptions();
     $$(".category-order-move").forEach((button) => button.addEventListener("click", moveCategoryOrder));
+    $$('[data-menu-delete]').forEach((button) => button.addEventListener("click", () => deleteMenuItem(button.dataset.menuDelete, button.dataset.menuTitle)));
     return;
   }
   body.innerHTML = `<div class="placeholder-state compact"><div><i>${tab === "permissions" ? "◇" : "☷"}</i><h2>${tab === "permissions" ? "권한 관리" : "감사 로그"}</h2><p>이 기능은 다음 구현 단계에서 연결됩니다.</p></div></div>`;
@@ -1234,26 +1250,57 @@ const renderAdminTab = (tab) => {
 const saveMenuLabels = async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
-  const labels = Object.fromEntries(new FormData(form));
+  const labels = {};
+  const urls = {};
+  for (const [key, value] of new FormData(form)) {
+    if (key.startsWith("url__")) urls[key.slice(5)] = value;
+    else labels[key] = value;
+  }
+  const scopes = collectMenuOrder();
   const submit = form.querySelector('[type="submit"]');
   submit.disabled = true;
   $("#menuLabelsError").textContent = "";
   try {
-    const response = await fetch("/api/admin/menu", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ labels }) });
+    const response = await fetch("/api/admin/menu", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ labels, urls }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message);
-    const orderResponse = await fetch("/api/admin/menu/order", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ scopes: collectMenuOrder() }) });
+    const orderResponse = await fetch("/api/admin/menu/order", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ scopes }) });
     const orderedResult = await orderResponse.json();
-    if (!orderResponse.ok) throw new Error(orderedResult.message);
+    if (!orderResponse.ok) {
+      applyMenuConfig(result);
+      renderNavigation();
+      $("#breadcrumbText").textContent = "포털 관리";
+      renderAdminTab("menus");
+      $("#menuLabelsError").textContent = `이름과 연결 URL은 저장됐지만 순서는 저장되지 않았습니다. ${orderedResult.message || "화면을 새로고침한 후 다시 시도해 주세요."}`;
+      showToast("메뉴 정보는 저장됐지만 순서 저장을 확인해 주세요.");
+      return;
+    }
     applyMenuConfig(orderedResult);
     renderNavigation();
     $("#breadcrumbText").textContent = "포털 관리";
     renderAdminTab("menus");
-    showToast("카테고리 이름과 순서가 저장되었습니다.");
+    showToast("카테고리 이름, 연결 URL과 순서가 저장되었습니다.");
   } catch (error) {
     $("#menuLabelsError").textContent = error.message || "카테고리 이름과 순서 저장에 실패했습니다.";
   } finally {
     submit.disabled = false;
+  }
+};
+
+const deleteMenuItem = async (menuId, title = "이 카테고리") => {
+  if (!window.confirm(`${title} 카테고리를 삭제하시겠습니까?\n등록된 하위 카테고리가 있으면 삭제되지 않습니다.`)) return;
+  try {
+    const response = await fetch(`/api/admin/menu/${encodeURIComponent(menuId)}`, { method: "DELETE", headers: { accept: "application/json" } });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    applyMenuConfig(result);
+    renderNavigation();
+    $("#breadcrumbText").textContent = "포털 관리";
+    renderAdminTab("menus");
+    showToast(`${title} 카테고리가 삭제되었습니다.`);
+  } catch (error) {
+    const target = $("#menuLabelsError");
+    if (target) target.textContent = error.message || "카테고리 삭제에 실패했습니다.";
   }
 };
 
