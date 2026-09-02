@@ -39,7 +39,7 @@ EDITABLE_MENU_IDS = {
     "dashboard",
     "management", "management_ar", "management_hr", "management_routine",
     "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
-    "technology", "technology_focus", "amarans", "meetings", "meetings_openai", "meetings_plaud", "meetings_plaud_device", "calendar", "tf", "tf_ar",
+    "technology", "technology_focus", "amarans", "meetings", "meetings_openai", "meetings_plaud", "meetings_plaud_device", "calendar", "admin_calendar", "tf", "tf_ar",
 }
 MENU_GROUP_IDS = ["workspace", "business", "collaboration"]
 BUILTIN_MEMBERSHIP = {
@@ -236,7 +236,7 @@ CREATE TABLE IF NOT EXISTS portal_menu_icons (
 );
 INSERT INTO portal_menu_icons(menu_id,icon) VALUES
   ('dashboard','▦'), ('management','▰'), ('marketing','◫'), ('technology','◇'), ('tf','T'),
-  ('amarans','A'), ('meetings','☷'), ('calendar','□')
+  ('amarans','A'), ('meetings','☷'), ('calendar','□'), ('admin_calendar','□')
 ON CONFLICT(menu_id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS portal_app_migrations (id varchar(100) PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS portal_menu_order (
