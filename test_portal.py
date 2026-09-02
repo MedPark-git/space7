@@ -103,6 +103,17 @@ class PortalSmokeTest(unittest.TestCase):
         self.assertEqual(updated.get_json()["urls"]["management_routine"], "https://example.com/management")
         self.assertEqual(updated.get_json()["icons"]["management_routine"], "M")
 
+        admin_calendar = self.client.patch(
+            "/api/admin/menu",
+            json={
+                "labels": {"admin_calendar": "일정(캘린더)_관리자"},
+                "urls": {"admin_calendar": ""},
+                "icons": {"admin_calendar": "□"},
+            },
+        )
+        self.assertEqual(admin_calendar.status_code, 200)
+        self.assertEqual(admin_calendar.get_json()["labels"]["admin_calendar"], "일정(캘린더)_관리자")
+
         invalid = self.client.patch(
             "/api/admin/menu",
             json={"labels": {"management_routine": "경영 업무현황"}, "urls": {"management_routine": "javascript:alert(1)"}, "icons": {}},
