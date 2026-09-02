@@ -581,11 +581,12 @@ const renderPlaudDeviceMeetingPage = async () => {
 
 const builtInEditableMenuIds = new Set([
   "group_workspace", "group_business", "group_collaboration",
+  "dashboard",
   "management", "management_ar", "management_hr", "management_routine",
   "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
   "technology", "technology_focus", "amarans", "meetings", "meetings_openai", "meetings_plaud", "meetings_plaud_device", "calendar", "tf", "tf_ar"
 ]);
-const editableTopMenuItems = () => menuGroups.flatMap((group) => group.items).filter((item) => item.id !== "dashboard" && item.id !== "admin");
+const editableTopMenuItems = () => menuGroups.flatMap((group) => group.items).filter((item) => item.id !== "admin");
 const editableMenuItems = () => editableTopMenuItems().flatMap((item) => [item, ...(item.children || [])]);
 const configurableMenuGroups = () => menuGroups.filter((group) => group.id !== "admin");
 
@@ -598,7 +599,7 @@ const sortMenuItems = (items, scope, order = {}) => items
   })
   .map(({ item }) => item);
 
-const applyMenuConfig = ({ labels = {}, urls = {}, customItems = [], order = {} } = {}) => {
+const applyMenuConfig = ({ labels = {}, urls = {}, icons = {}, customItems = [], order = {} } = {}) => {
   menuGroups.forEach((group) => {
     group.items = group.items.filter((item) => !item.isCustom);
     group.items.forEach((item) => { if (item.children) item.children = item.children.filter((child) => !child.isCustom); });
@@ -606,6 +607,7 @@ const applyMenuConfig = ({ labels = {}, urls = {}, customItems = [], order = {} 
   editableMenuItems().forEach((item) => {
     if (typeof labels[item.id] === "string" && labels[item.id].trim()) item.title = labels[item.id].trim();
     if (Object.prototype.hasOwnProperty.call(urls, item.id)) item.url = typeof urls[item.id] === "string" && urls[item.id].trim() ? urls[item.id].trim() : null;
+    if (Object.prototype.hasOwnProperty.call(icons, item.id)) item.icon = typeof icons[item.id] === "string" ? icons[item.id].trim() : "";
   });
   configurableMenuGroups().forEach((group) => {
     const label = labels[`group_${group.id}`];
@@ -744,13 +746,16 @@ const renderNavigation = () => {
       ${group.items.map((item) => {
         const hasChildren = Boolean(item.children?.length);
         if (item.url && !hasChildren) return `<a class="nav-item" href="${escapeHtml(item.url)}"${linkAttributes(item.url)}><span class="nav-icon">${escapeHtml(item.icon || "◇")}</span><span>${escapeHtml(item.title)}</span><span class="chevron">${linkIndicator(item.url)}</span></a>`;
-        return `
-        <button class="nav-item ${item.id === currentPage || item.children?.some((child) => child.id === currentPage) ? "active expanded" : ""}" data-nav="${escapeHtml(item.id)}" data-has-children="${hasChildren}">
+        const navButton = `<button class="nav-item ${item.id === currentPage || item.children?.some((child) => child.id === currentPage) ? "active expanded" : ""}" data-nav="${escapeHtml(item.id)}" data-has-children="${hasChildren}">
           <span class="nav-icon">${escapeHtml(item.icon || "◇")}</span><span>${escapeHtml(item.title)}</span>${hasChildren ? '<span class="chevron">›</span>' : ""}
-        </button>
+        </button>`;
+        const control = hasChildren && item.url
+          ? `<div class="nav-parent-row">${navButton}<a class="nav-parent-link" href="${escapeHtml(item.url)}"${linkAttributes(item.url)} aria-label="${escapeHtml(item.title)} 연결 페이지 열기">${linkIndicator(item.url)}</a></div>`
+          : navButton;
+        return `${control}
         ${hasChildren ? `<div class="submenu ${item.children?.some((child) => child.id === currentPage) ? "open" : ""}" data-submenu="${escapeHtml(item.id)}"><div>${item.children.map((child) => child.url
-          ? `<a data-external="${escapeHtml(child.title)}" data-url="${escapeHtml(child.url)}" href="${escapeHtml(child.url)}"${linkAttributes(child.url)}>${escapeHtml(child.title)}<span style="float:right">${linkIndicator(child.url)}</span></a>`
-          : `<button data-sub-page="${escapeHtml(child.id)}">${escapeHtml(child.title)}<span style="float:right">→</span></button>`).join("")}</div></div>` : ""}
+          ? `<a data-external="${escapeHtml(child.title)}" data-url="${escapeHtml(child.url)}" href="${escapeHtml(child.url)}"${linkAttributes(child.url)}><i class="submenu-icon">${escapeHtml(child.icon || "")}</i><span class="submenu-label">${escapeHtml(child.title)}</span><b>${linkIndicator(child.url)}</b></a>`
+          : `<button data-sub-page="${escapeHtml(child.id)}"><i class="submenu-icon">${escapeHtml(child.icon || "")}</i><span class="submenu-label">${escapeHtml(child.title)}</span><b>→</b></button>`).join("")}</div></div>` : ""}
       `}).join("")}
     </section>
   `).join("");
@@ -1140,7 +1145,7 @@ const orderButtonsMarkup = () => `<span class="category-order-actions"><button t
 
 const orderItemMarkup = (item) => `<article class="category-order-item" data-order-row data-order-id="${escapeHtml(item.id)}">
   <div><span><i>${escapeHtml(item.icon || "◇")}</i>${escapeHtml(item.title)}</span>${orderButtonsMarkup()}</div>
-  ${(item.children || []).length ? `<div class="category-order-list nested" data-order-scope="${escapeHtml(item.id)}">${item.children.map((child) => `<article class="category-order-item child" data-order-row data-order-id="${escapeHtml(child.id)}"><div><span>${escapeHtml(child.title)}</span>${orderButtonsMarkup()}</div></article>`).join("")}</div>` : ""}
+  ${(item.children || []).length ? `<div class="category-order-list nested" data-order-scope="${escapeHtml(item.id)}">${item.children.map((child) => `<article class="category-order-item child" data-order-row data-order-id="${escapeHtml(child.id)}"><div><span><i>${escapeHtml(child.icon || "·")}</i>${escapeHtml(child.title)}</span>${orderButtonsMarkup()}</div></article>`).join("")}</div>` : ""}
 </article>`;
 
 const menuOrderMarkup = () => `<section class="menu-order-panel">
@@ -1174,14 +1179,17 @@ const updateMenuCreateParentOptions = () => {
 
 const menuUrlFieldMarkup = (item) => `<label class="menu-url-label"><span>연결 URL <small>비우면 포털 내부 화면</small></span><input name="url__${escapeHtml(item.id)}" value="${escapeHtml(item.url || "")}" inputmode="url" placeholder="https:// 또는 /내부경로" /></label>`;
 
+const menuIconFieldMarkup = (item) => `<label class="menu-icon-label"><span>아이콘 <small>선택</small></span><input name="icon__${escapeHtml(item.id)}" value="${escapeHtml(item.icon || "")}" maxlength="8" placeholder="◇" /></label>`;
+
 const menuDeleteButtonMarkup = (item) => item.isCustom
   ? `<button type="button" class="menu-delete-button" data-menu-delete="${escapeHtml(item.id)}" data-menu-title="${escapeHtml(item.title)}">삭제</button>`
   : "";
 
 const menuEditEntryMarkup = (item, label) => `<div class="menu-edit-entry">
-  <div class="menu-edit-field-grid ${item.children?.length ? "single" : ""}">
+  <div class="menu-edit-field-grid">
     <label><span>${label}</span><input name="${escapeHtml(item.id)}" value="${escapeHtml(item.title)}" minlength="1" maxlength="40" required /></label>
-    ${item.children?.length ? "" : menuUrlFieldMarkup(item)}
+    ${menuUrlFieldMarkup(item)}
+    ${menuIconFieldMarkup(item)}
   </div>
   ${menuDeleteButtonMarkup(item)}
 </div>`;
@@ -1207,7 +1215,7 @@ const renderAdminTab = (tab) => {
     body.innerHTML = `
       <div class="menu-admin-layout">
         <form id="menuLabelsForm" class="menu-labels-form">
-          <div class="menu-manager-heading"><div><h2>카테고리·연결 관리</h2><p>카테고리 이름, 연결 URL과 표시 순서를 함께 관리합니다.</p></div><button class="button primary" type="submit">정보·순서 저장</button></div>
+          <div class="menu-manager-heading"><div><h2>카테고리 전체 설정</h2><p>최상위 영역 아래 모든 카테고리의 이름, 연결 URL, 아이콘과 표시 순서를 관리합니다.</p></div><button class="button primary" type="submit">전체 설정 저장</button></div>
           <section class="menu-group-name-editor">
             <h3>최상위 카테고리</h3>
             <div class="menu-group-name-grid">${configurableMenuGroups().map((group) => `
@@ -1230,7 +1238,7 @@ const renderAdminTab = (tab) => {
             <label>등록 위치<select id="menuCreateParent" name="parent_id"></select></label>
             <label>카테고리 이름<input name="label" minlength="1" maxlength="40" placeholder="새 카테고리 이름" required /></label>
             <label>연결 URL <small>선택</small><input name="url" inputmode="url" placeholder="https:// 또는 /내부경로" /></label>
-            <label>아이콘 <small>선택 · 최상단 바로 아래 등록용</small><input name="icon" maxlength="2" placeholder="◇" /></label>
+            <label>아이콘 <small>선택</small><input name="icon" maxlength="8" placeholder="◇" /></label>
             <p id="menuCreateError" class="form-error"></p>
             <button class="button primary full" type="submit">＋ 카테고리 등록</button>
           </form>
@@ -1252,8 +1260,10 @@ const saveMenuLabels = async (event) => {
   const form = event.currentTarget;
   const labels = {};
   const urls = {};
+  const icons = {};
   for (const [key, value] of new FormData(form)) {
     if (key.startsWith("url__")) urls[key.slice(5)] = value;
+    else if (key.startsWith("icon__")) icons[key.slice(6)] = value;
     else labels[key] = value;
   }
   const scopes = collectMenuOrder();
@@ -1261,7 +1271,7 @@ const saveMenuLabels = async (event) => {
   submit.disabled = true;
   $("#menuLabelsError").textContent = "";
   try {
-    const response = await fetch("/api/admin/menu", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ labels, urls }) });
+    const response = await fetch("/api/admin/menu", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ labels, urls, icons }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message);
     const orderResponse = await fetch("/api/admin/menu/order", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ scopes }) });
@@ -1271,7 +1281,7 @@ const saveMenuLabels = async (event) => {
       renderNavigation();
       $("#breadcrumbText").textContent = "포털 관리";
       renderAdminTab("menus");
-      $("#menuLabelsError").textContent = `이름과 연결 URL은 저장됐지만 순서는 저장되지 않았습니다. ${orderedResult.message || "화면을 새로고침한 후 다시 시도해 주세요."}`;
+      $("#menuLabelsError").textContent = `이름, 연결 URL과 아이콘은 저장됐지만 순서는 저장되지 않았습니다. ${orderedResult.message || "화면을 새로고침한 후 다시 시도해 주세요."}`;
       showToast("메뉴 정보는 저장됐지만 순서 저장을 확인해 주세요.");
       return;
     }
@@ -1279,7 +1289,7 @@ const saveMenuLabels = async (event) => {
     renderNavigation();
     $("#breadcrumbText").textContent = "포털 관리";
     renderAdminTab("menus");
-    showToast("카테고리 이름, 연결 URL과 순서가 저장되었습니다.");
+    showToast("카테고리 이름, 연결 URL, 아이콘과 순서가 저장되었습니다.");
   } catch (error) {
     $("#menuLabelsError").textContent = error.message || "카테고리 이름과 순서 저장에 실패했습니다.";
   } finally {
