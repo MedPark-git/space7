@@ -394,6 +394,7 @@ def _initialize_database_once():
             labels = {
                 "group_workspace": "WORKSPACE", "group_business": "BUSINESS", "group_collaboration": "COLLABORATION",
                 "management": "경영사업본부", "marketing": "마케팅 사업본부", "technology": "기술사업본부",
+                "management_routine": "경영 업무현황",
                 "amarans": "아마란스", "meetings": "회의록", "calendar": "일정(캘린더)",
                 "meetings_openai": "회의록_OpenAI", "meetings_plaud": "회의록_Plaud",
                 "meetings_plaud_device": "회의록_Plaud(기기)",
@@ -401,6 +402,19 @@ def _initialize_database_once():
             }
             for menu_id, label in labels.items():
                 cur.execute("INSERT INTO portal_menu_labels(menu_id,label) VALUES(%s,%s) ON CONFLICT(menu_id) DO NOTHING", (menu_id, label))
+            cur.execute(
+                """
+                UPDATE portal_menu_labels
+                   SET label='경영 업무현황', updated_at=now()
+                 WHERE menu_id='management_routine'
+                   AND label IN (
+                     '경영 루틴 업무 시스템',
+                     '경영 루틴 업무시스템',
+                     '경영 루틴 업무 시스템(예정)',
+                     '경영 루틴 업무시스템(예정)'
+                   )
+                """
+            )
             cur.execute("SELECT count(*) FROM users WHERE status='active' AND role='admin'")
             admin_ready = cur.fetchone()[0] > 0
             if not admin_ready and password and len(password) >= 12:
