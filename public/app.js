@@ -56,6 +56,7 @@ let currentPage = "dashboard";
 let carouselMode = "calendar";
 let carouselTimer;
 let carouselPaused = false;
+let calendarEventDialogActive = false;
 let currentUser = null;
 let calendarMonth = new Date();
 let selectedCalendarDateKey = null;
@@ -817,6 +818,13 @@ const calendarEventDateTime = (event) => {
 
 const openCalendarEventDetail = (event) => {
   if (!calendarEventDialog) return;
+  if (currentPage === "dashboard") {
+    calendarEventDialogActive = true;
+    carouselMode = "calendar";
+    clearInterval(carouselTimer);
+    carouselTimer = null;
+    $(".main-carousel-panel")?.classList.add("carousel-paused");
+  }
   const detail = $("#calendarEventDetail");
   const color = escapeHtml(event.calendar_color || "#0a9b7e");
   const location = String(event.location || "").trim();
@@ -1051,7 +1059,7 @@ const renderCarousel = () => {
 const startCarousel = () => {
   clearInterval(carouselTimer);
   carouselTimer = null;
-  if (carouselPaused || currentPage !== "dashboard") return;
+  if (carouselPaused || calendarEventDialogActive || currentPage !== "dashboard") return;
   const progress = $("#carouselProgress");
   if (progress) progress.innerHTML = "<i></i>";
   carouselTimer = setInterval(() => {
@@ -1064,7 +1072,7 @@ const setCarouselPaused = (paused) => {
   if (currentPage !== "dashboard") return;
   carouselPaused = paused;
   const panel = $(".main-carousel-panel");
-  panel?.classList.toggle("carousel-paused", paused);
+  panel?.classList.toggle("carousel-paused", paused || calendarEventDialogActive);
   if (paused) {
     clearInterval(carouselTimer);
     carouselTimer = null;
@@ -1095,6 +1103,7 @@ const renderDashboard = () => {
   resetCalendarToToday();
   carouselMode = "calendar";
   carouselPaused = false;
+  calendarEventDialogActive = false;
   pageContent.innerHTML = `
     <section class="page-heading"><div><span class="eyebrow">OVERVIEW</span><h1>안녕하세요, ${currentUser?.name || "임직원"}님</h1><p>주요 일정과 국내·해외 사업 현황을 한눈에 확인하세요.</p></div><span class="live-status"><i></i> 시스템 정상 운영 중</span></section>
     <section class="dashboard-top-grid">
@@ -1357,6 +1366,14 @@ $$('[data-close-quick-links]').forEach((button) => button.addEventListener("clic
 $("#calendarEventDialogClose")?.addEventListener("click", () => calendarEventDialog.close());
 calendarEventDialog?.addEventListener("click", (event) => {
   if (event.target === calendarEventDialog) calendarEventDialog.close();
+});
+calendarEventDialog?.addEventListener("close", () => {
+  if (!calendarEventDialogActive) return;
+  calendarEventDialogActive = false;
+  const panel = $(".main-carousel-panel");
+  carouselPaused = Boolean(panel?.matches(":hover"));
+  panel?.classList.toggle("carousel-paused", carouselPaused);
+  startCarousel();
 });
 $("#quickLinksForm").addEventListener("submit", async (event) => {
   event.preventDefault();
