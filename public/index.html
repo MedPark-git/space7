@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#075f51" />
     <title>MedPark One | 사내 통합 포털</title>
-    <link rel="stylesheet" href="./styles.css?v=20260901-plaud-device2" />
+    <link rel="stylesheet" href="./styles.css?v=20260902-calendar-modal1" />
   </head>
   <body>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -151,6 +151,11 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=20260901-plaud-device2" type="module"></script>
+    <dialog id="calendarEventDialog" class="calendar-event-dialog" aria-labelledby="calendarEventDialogTitle">
+      <button id="calendarEventDialogClose" class="calendar-event-dialog-close" type="button" aria-label="일정 상세 닫기">×</button>
+      <div id="calendarEventDetail" class="calendar-event-dialog-panel"></div>
+    </dialog>
+
+    <script src="./app.js?v=20260902-calendar-modal1" type="module"></script>
   </body>
 </html>
