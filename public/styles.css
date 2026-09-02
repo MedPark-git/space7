@@ -533,9 +533,16 @@ a { color: inherit; text-decoration: none; }
 .menu-edit-group label { display: grid; gap: 6px; color: #54625e; font-size: 9px; font-weight: 750; }
 .menu-edit-group input, .menu-create-form input, .menu-create-form select { width: 100%; height: 40px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: white; color: #33423e; outline: none; }
 .menu-edit-group input:focus, .menu-create-form input:focus, .menu-create-form select:focus { border-color: var(--green-600); box-shadow: 0 0 0 3px rgba(10,155,126,.1); }
-.top-menu-label { max-width: 440px; }
-.top-menu-label span { color: var(--green-800); }
+.menu-edit-entry { display: flex; align-items: end; gap: 9px; min-width: 0; }
+.menu-edit-field-grid { flex: 1; display: grid; grid-template-columns: minmax(150px,.8fr) minmax(220px,1.2fr); gap: 9px; min-width: 0; }
+.menu-edit-field-grid.single { grid-template-columns: minmax(180px,440px); }
+.menu-edit-entry > .menu-edit-field-grid > label:first-child span { color: var(--green-800); }
+.menu-url-label small { color: #9aa5a1; font-size: 8px; font-weight: 600; }
+.menu-delete-button { flex: 0 0 auto; height: 40px; padding: 0 12px; border: 1px solid #ebceca; border-radius: 8px; background: #fff7f5; color: #ae4a43; font-size: 9px; font-weight: 800; cursor: pointer; }
+.menu-delete-button:hover { border-color: #d78179; background: #fff0ed; }
 .child-menu-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; padding: 12px; border-radius: 9px; background: #f1f6f4; }
+.child-menu-list .menu-edit-entry { align-items: end; padding: 10px; border: 1px solid #e0eae6; border-radius: 9px; background: white; }
+.child-menu-list .menu-edit-field-grid { grid-template-columns: 1fr; }
 .child-menu-list label span { color: #83908c; }
 .empty-child-menu { grid-column: 1 / -1; margin: 2px; color: #98a39f; font-size: 9px; }
 .menu-admin-side { display: grid; gap: 16px; }
@@ -726,6 +733,9 @@ a { color: inherit; text-decoration: none; }
   .menu-manager-heading { align-items: flex-start; flex-direction: column; }
   .menu-label-grid { grid-template-columns: 1fr; }
   .child-menu-list { grid-template-columns: 1fr; }
+  .menu-edit-field-grid { grid-template-columns: 1fr; }
+  .menu-edit-entry { align-items: stretch; }
+  .menu-delete-button { align-self: end; }
 }
 
 .plaud-page-heading { align-items: center; }
