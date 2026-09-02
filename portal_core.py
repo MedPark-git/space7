@@ -63,7 +63,7 @@ DEFAULT_QUICK_LINKS = ["ar", "hr", "allo", "global"]
 
 _memory = {
     "users": {}, "sessions": {}, "audit": [], "labels": {}, "order": {},
-    "custom": {}, "quick": {},
+    "urls": {}, "custom": {}, "quick": {},
 }
 
 
@@ -216,6 +216,19 @@ CREATE TABLE IF NOT EXISTS portal_menu_labels (
   menu_id varchar(50) PRIMARY KEY, label varchar(40) NOT NULL,
   updated_by uuid REFERENCES users(id) ON DELETE SET NULL, updated_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS portal_menu_links (
+  menu_id varchar(50) PRIMARY KEY, url text NOT NULL DEFAULT '',
+  updated_by uuid REFERENCES users(id) ON DELETE SET NULL, updated_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO portal_menu_links(menu_id,url) VALUES
+  ('management_ar','https://medprk-ar-dashboard.mycafe24.ai/'),
+  ('management_hr','https://medprk-medpark-hr-maps.mycafe24.ai/'),
+  ('management_routine','https://medprk-management-task.mycafe24.ai/'),
+  ('marketing_allo','https://medprk-medpark-allo.mycafe24.ai/'),
+  ('marketing_global','https://medprk-medpark-global-maps.mycafe24.ai/'),
+  ('technology_focus','https://medprk-medpark-tech-conference-maps.mycafe24.ai/'),
+  ('amarans','https://gw.medpark.kr/')
+ON CONFLICT(menu_id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS portal_app_migrations (id varchar(100) PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS portal_menu_order (
   menu_id varchar(50) PRIMARY KEY, parent_id varchar(50) NOT NULL, item_order integer NOT NULL DEFAULT 0,
@@ -528,12 +541,16 @@ def delete_session(token):
 def menu_config():
     if DB_ENABLED:
         labels = {row["menu_id"]: row["label"] for row in fetchall("SELECT menu_id,label FROM portal_menu_labels")}
+        urls = {row["menu_id"]: row["url"] for row in fetchall("SELECT menu_id,url FROM portal_menu_links")}
         custom = fetchall("SELECT id::text,parent_id,label,icon,url,item_order FROM portal_custom_menu_items ORDER BY item_order,created_at")
         order_rows = fetchall("SELECT menu_id,parent_id,item_order FROM portal_menu_order ORDER BY parent_id,item_order")
     else:
-        labels, custom, order_rows = dict(_memory["labels"]), list(_memory["custom"].values()), list(_memory["order"].values())
+        labels = dict(_memory["labels"])
+        urls = dict(_memory["urls"])
+        custom = list(_memory["custom"].values())
+        order_rows = list(_memory["order"].values())
     order = {row["menu_id"]: {"parent_id": row["parent_id"], "item_order": int(row["item_order"])} for row in order_rows}
-    return {"labels": labels, "customItems": custom, "order": order}
+    return {"labels": labels, "urls": urls, "customItems": custom, "order": order}
 
 
 def current_membership():
@@ -558,9 +575,13 @@ def normalize_menu_url(raw):
 
 def update_menu_labels(data, actor, ip):
     labels = data.get("labels") if isinstance(data, dict) else None
+    urls = data.get("urls", {}) if isinstance(data, dict) else None
     if not isinstance(labels, dict):
         raise AppError("수정할 카테고리 이름을 입력해 주세요.")
-    custom_ids = {str(item["id"]) for item in menu_config()["customItems"]}
+    if not isinstance(urls, dict):
+        raise AppError("수정할 연결 URL을 확인해 주세요.")
+    custom_items = {str(item["id"]): item for item in menu_config()["customItems"]}
+    custom_ids = set(custom_items)
     normalized = {}
     for menu_id, raw in labels.items():
         if menu_id not in EDITABLE_MENU_IDS and menu_id not in custom_ids:
@@ -569,6 +590,11 @@ def update_menu_labels(data, actor, ip):
         if not label or len(label) > 40:
             raise AppError("카테고리 이름은 1~40자로 입력해 주세요.")
         normalized[menu_id] = label
+    normalized_urls = {}
+    for menu_id, raw in urls.items():
+        if menu_id.startswith("group_") or (menu_id not in EDITABLE_MENU_IDS and menu_id not in custom_ids):
+            raise AppError("연결 URL을 수정할 수 없는 카테고리입니다.")
+        normalized_urls[menu_id] = normalize_menu_url(raw)
     if DB_ENABLED:
         with connection() as conn:
             with conn.cursor() as cur:
@@ -577,14 +603,50 @@ def update_menu_labels(data, actor, ip):
                         cur.execute("INSERT INTO portal_menu_labels(menu_id,label,updated_by) VALUES(%s,%s,%s) ON CONFLICT(menu_id) DO UPDATE SET label=excluded.label,updated_by=excluded.updated_by,updated_at=now()", (menu_id, label, actor["id"]))
                     else:
                         cur.execute("UPDATE portal_custom_menu_items SET label=%s,updated_at=now() WHERE id::text=%s", (label, menu_id))
+                for menu_id, url in normalized_urls.items():
+                    if menu_id in EDITABLE_MENU_IDS:
+                        cur.execute("INSERT INTO portal_menu_links(menu_id,url,updated_by) VALUES(%s,%s,%s) ON CONFLICT(menu_id) DO UPDATE SET url=excluded.url,updated_by=excluded.updated_by,updated_at=now()", (menu_id, url or "", actor["id"]))
+                    else:
+                        cur.execute("UPDATE portal_custom_menu_items SET url=%s,updated_at=now() WHERE id::text=%s", (url, menu_id))
     else:
         for menu_id, label in normalized.items():
             if menu_id in EDITABLE_MENU_IDS:
                 _memory["labels"][menu_id] = label
             else:
                 _memory["custom"][menu_id]["label"] = label
-    write_audit(actor["id"], "menu.labels.update", "portal_menu", "navigation", {"labels": normalized}, ip)
+        for menu_id, url in normalized_urls.items():
+            if menu_id in EDITABLE_MENU_IDS:
+                _memory["urls"][menu_id] = url or ""
+            else:
+                _memory["custom"][menu_id]["url"] = url
+    write_audit(actor["id"], "menu.config.update", "portal_menu", "navigation", {"labels": normalized, "url_menu_ids": list(normalized_urls)}, ip)
     return menu_config()
+
+
+def delete_menu_item(menu_id, actor, ip):
+    menu_id = str(menu_id or "").strip()
+    if not menu_id:
+        raise AppError("삭제할 카테고리를 확인해 주세요.")
+    if DB_ENABLED:
+        with connection() as conn:
+            item = fetchone("SELECT id::text,parent_id,label FROM portal_custom_menu_items WHERE id::text=%s", (menu_id,), conn)
+            if not item:
+                raise AppError("사용자 등록 카테고리를 찾을 수 없습니다.", 404)
+            child = fetchone("SELECT id::text FROM portal_custom_menu_items WHERE parent_id=%s LIMIT 1", (menu_id,), conn)
+            if child:
+                raise AppError("하위 카테고리가 있어 삭제할 수 없습니다. 하위 카테고리를 먼저 삭제해 주세요.")
+            execute("DELETE FROM portal_menu_order WHERE menu_id=%s", (menu_id,), conn)
+            execute("DELETE FROM portal_custom_menu_items WHERE id::text=%s", (menu_id,), conn)
+    else:
+        item = _memory["custom"].get(menu_id)
+        if not item:
+            raise AppError("사용자 등록 카테고리를 찾을 수 없습니다.", 404)
+        if any(str(candidate.get("parent_id") or "") == menu_id for candidate in _memory["custom"].values()):
+            raise AppError("하위 카테고리가 있어 삭제할 수 없습니다. 하위 카테고리를 먼저 삭제해 주세요.")
+        _memory["custom"].pop(menu_id, None)
+        _memory["order"].pop(menu_id, None)
+    write_audit(actor["id"], "menu.item.delete", "portal_menu", menu_id, {"label": item["label"], "parent_id": item.get("parent_id")}, ip)
+    return {"success": True, **menu_config()}
 
 
 def create_menu_item(data, actor, ip):
