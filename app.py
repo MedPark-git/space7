@@ -122,6 +122,12 @@ def menu_post():
     return json_response(core.create_menu_item(payload(), actor, request_ip()), 201)
 
 
+@portal.delete("/api/admin/menu/<menu_id>")
+def menu_delete(menu_id):
+    actor = current_user(True)
+    return json_response(core.delete_menu_item(menu_id, actor, request_ip()))
+
+
 @portal.put("/api/admin/menu/order")
 def menu_order():
     actor = current_user(True)
