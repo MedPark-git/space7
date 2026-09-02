@@ -51,6 +51,7 @@ const pageContent = $("#pageContent");
 const searchDialog = $("#searchDialog");
 const employeeDialog = $("#employeeDialog");
 const quickLinksDialog = $("#quickLinksDialog");
+const calendarEventDialog = $("#calendarEventDialog");
 let currentPage = "dashboard";
 let carouselMode = "calendar";
 let carouselTimer;
@@ -799,6 +800,44 @@ const eventDateKey = (event) => {
   if (/^\d{4}-\d{2}-\d{2}$/.test(event.start || "")) return event.start;
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(event.start));
 };
+
+const calendarEventDateTime = (event) => {
+  const start = new Date(event.start);
+  const dateLabel = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "long" }).format(start);
+  if (event.all_day) return `${dateLabel} · 종일`;
+  const timeFormat = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false });
+  const startTime = timeFormat.format(start);
+  if (!event.end) return `${dateLabel} · ${startTime}`;
+  const end = new Date(event.end);
+  const endDateKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(end);
+  if (endDateKey === eventDateKey(event)) return `${dateLabel} · ${startTime} - ${timeFormat.format(end)}`;
+  const endLabel = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(end);
+  return `${dateLabel} ${startTime} - ${endLabel}`;
+};
+
+const openCalendarEventDetail = (event) => {
+  if (!calendarEventDialog) return;
+  const detail = $("#calendarEventDetail");
+  const color = escapeHtml(event.calendar_color || "#0a9b7e");
+  const location = String(event.location || "").trim();
+  const description = String(event.description || "").trim();
+  detail.innerHTML = `<header class="calendar-event-detail-heading">
+    <span class="calendar-event-source"><i style="--calendar-color:${color}"></i>${escapeHtml(event.calendar_name || "Google Calendar")}</span>
+    <h2 id="calendarEventDialogTitle">${escapeHtml(event.title || "(제목 없음)")}</h2>
+    <p>${escapeHtml(calendarEventDateTime(event))}</p>
+  </header>
+  <div class="calendar-event-detail-meta">
+    <article><span>일시</span><b>${escapeHtml(calendarEventDateTime(event))}</b></article>
+    <article><span>캘린더</span><b>${escapeHtml(event.calendar_name || "Google Calendar")}</b></article>
+    ${location ? `<article class="wide"><span>장소</span><b>${escapeHtml(location)}</b></article>` : ""}
+  </div>
+  <section class="calendar-event-detail-description">
+    <h3>상세 내용</h3>
+    ${description ? `<p>${escapeHtml(description).replace(/\n/g, "<br>")}</p>` : '<p class="empty">등록된 상세 설명이 없습니다.</p>'}
+  </section>`;
+  calendarEventDialog.showModal();
+};
+
 const renderCalendarDays = (events = [], selectedKey = "") => {
   const heads = ["일", "월", "화", "수", "목", "금", "토"].map((d) => `<div class="day-head">${d}</div>`).join("");
   const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
@@ -859,10 +898,10 @@ const renderCalendarView = async () => {
       const focusDate = new Date(`${focusKey}T12:00:00`);
       const focusEvents = events.filter((event) => eventDateKey(event) === focusKey);
       const focusLabel = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(focusDate);
-      const scheduleHtml = focusEvents.length ? focusEvents.map((event) => {
+      const scheduleHtml = focusEvents.length ? focusEvents.map((event, index) => {
         const start = event.all_day ? "종일" : new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.start));
         const end = event.all_day || !event.end ? "" : new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.end));
-        return `<article class="schedule-item" style="--event-color:${escapeHtml(event.calendar_color || "#0a9b7e")}"><time>${escapeHtml(start)}${end ? ` - ${escapeHtml(end)}` : ""}</time><b>${escapeHtml(event.title)}</b><span>${event.calendar_color ? `<i class="calendar-color-dot" style="--calendar-color:${escapeHtml(event.calendar_color)}"></i>` : ""}${escapeHtml(event.calendar_name || "Google Calendar")}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</span>${event.description ? `<p>${escapeHtml(event.description)}</p>` : ""}</article>`;
+        return `<button type="button" class="schedule-item" data-calendar-event-index="${index}" style="--event-color:${escapeHtml(event.calendar_color || "#0a9b7e")}" aria-label="${escapeHtml(event.title)} 상세 보기"><time>${escapeHtml(start)}${end ? ` - ${escapeHtml(end)}` : ""}</time><b>${escapeHtml(event.title)}</b><span>${event.calendar_color ? `<i class="calendar-color-dot" style="--calendar-color:${escapeHtml(event.calendar_color)}"></i>` : ""}${escapeHtml(event.calendar_name || "Google Calendar")}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</span>${event.description ? `<span class="schedule-item-description">${escapeHtml(event.description)}</span>` : ""}<span class="schedule-item-action" aria-hidden="true">상세 보기 →</span></button>`;
       }).join("") : '<p class="calendar-empty">등록된 일정이 없습니다.</p>';
       body.innerHTML = `<div class="calendar-view main-calendar-view">
         <div class="calendar-area"><div class="calendar-top"><button id="calendarPrev" aria-label="이전 달">‹</button><b>${year}년 ${month}월</b><button id="calendarNext" aria-label="다음 달">›</button></div><div class="calendar-grid">${renderCalendarDays(events, focusKey)}</div></div>
@@ -870,6 +909,10 @@ const renderCalendarView = async () => {
       </div>`;
       $("#calendarPrev").onclick = () => { selectedCalendarDateKey = null; calendarMonth = new Date(year,month - 2,1); renderCalendarView(); };
       $("#calendarNext").onclick = () => { selectedCalendarDateKey = null; calendarMonth = new Date(year,month,1); renderCalendarView(); };
+      body.querySelectorAll("[data-calendar-event-index]").forEach((button) => button.addEventListener("click", () => {
+        const event = focusEvents[Number(button.dataset.calendarEventIndex)];
+        if (event) openCalendarEventDetail(event);
+      }));
       body.querySelectorAll("[data-calendar-date]").forEach((button) => button.addEventListener("click", () => {
         const nextDate = new Date(`${button.dataset.calendarDate}T12:00:00`);
         if (nextDate.getFullYear() !== year || nextDate.getMonth() !== month - 1) {
@@ -1311,6 +1354,10 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => 
 
 $$('[data-close-employee]').forEach((button) => button.addEventListener("click", () => employeeDialog.close()));
 $$('[data-close-quick-links]').forEach((button) => button.addEventListener("click", () => quickLinksDialog.close()));
+$("#calendarEventDialogClose")?.addEventListener("click", () => calendarEventDialog.close());
+calendarEventDialog?.addEventListener("click", (event) => {
+  if (event.target === calendarEventDialog) calendarEventDialog.close();
+});
 $("#quickLinksForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const ids = [...event.currentTarget.querySelectorAll('input[name="system_id"]:checked')].map((input) => input.value);
