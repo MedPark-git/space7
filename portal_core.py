@@ -36,6 +36,7 @@ _database_state = {
 
 EDITABLE_MENU_IDS = {
     "group_workspace", "group_business", "group_collaboration",
+    "dashboard",
     "management", "management_ar", "management_hr", "management_routine",
     "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
     "technology", "technology_focus", "amarans", "meetings", "meetings_openai", "meetings_plaud", "meetings_plaud_device", "calendar", "tf", "tf_ar",
@@ -63,7 +64,7 @@ DEFAULT_QUICK_LINKS = ["ar", "hr", "allo", "global"]
 
 _memory = {
     "users": {}, "sessions": {}, "audit": [], "labels": {}, "order": {},
-    "urls": {}, "custom": {}, "quick": {},
+    "urls": {}, "icons": {}, "custom": {}, "quick": {},
 }
 
 
@@ -228,6 +229,14 @@ INSERT INTO portal_menu_links(menu_id,url) VALUES
   ('marketing_global','https://medprk-medpark-global-maps.mycafe24.ai/'),
   ('technology_focus','https://medprk-medpark-tech-conference-maps.mycafe24.ai/'),
   ('amarans','https://gw.medpark.kr/')
+ON CONFLICT(menu_id) DO NOTHING;
+CREATE TABLE IF NOT EXISTS portal_menu_icons (
+  menu_id varchar(50) PRIMARY KEY, icon varchar(8) NOT NULL DEFAULT '',
+  updated_by uuid REFERENCES users(id) ON DELETE SET NULL, updated_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO portal_menu_icons(menu_id,icon) VALUES
+  ('dashboard','▦'), ('management','▰'), ('marketing','◫'), ('technology','◇'), ('tf','T'),
+  ('amarans','A'), ('meetings','☷'), ('calendar','□')
 ON CONFLICT(menu_id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS portal_app_migrations (id varchar(100) PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS portal_menu_order (
@@ -542,15 +551,17 @@ def menu_config():
     if DB_ENABLED:
         labels = {row["menu_id"]: row["label"] for row in fetchall("SELECT menu_id,label FROM portal_menu_labels")}
         urls = {row["menu_id"]: row["url"] for row in fetchall("SELECT menu_id,url FROM portal_menu_links")}
+        icons = {row["menu_id"]: row["icon"] for row in fetchall("SELECT menu_id,icon FROM portal_menu_icons")}
         custom = fetchall("SELECT id::text,parent_id,label,icon,url,item_order FROM portal_custom_menu_items ORDER BY item_order,created_at")
         order_rows = fetchall("SELECT menu_id,parent_id,item_order FROM portal_menu_order ORDER BY parent_id,item_order")
     else:
         labels = dict(_memory["labels"])
         urls = dict(_memory["urls"])
+        icons = dict(_memory["icons"])
         custom = list(_memory["custom"].values())
         order_rows = list(_memory["order"].values())
     order = {row["menu_id"]: {"parent_id": row["parent_id"], "item_order": int(row["item_order"])} for row in order_rows}
-    return {"labels": labels, "urls": urls, "customItems": custom, "order": order}
+    return {"labels": labels, "urls": urls, "icons": icons, "customItems": custom, "order": order}
 
 
 def current_membership():
@@ -576,10 +587,13 @@ def normalize_menu_url(raw):
 def update_menu_labels(data, actor, ip):
     labels = data.get("labels") if isinstance(data, dict) else None
     urls = data.get("urls", {}) if isinstance(data, dict) else None
+    icons = data.get("icons", {}) if isinstance(data, dict) else None
     if not isinstance(labels, dict):
         raise AppError("수정할 카테고리 이름을 입력해 주세요.")
     if not isinstance(urls, dict):
         raise AppError("수정할 연결 URL을 확인해 주세요.")
+    if not isinstance(icons, dict):
+        raise AppError("수정할 카테고리 아이콘을 확인해 주세요.")
     custom_items = {str(item["id"]): item for item in menu_config()["customItems"]}
     custom_ids = set(custom_items)
     normalized = {}
@@ -595,6 +609,14 @@ def update_menu_labels(data, actor, ip):
         if menu_id.startswith("group_") or (menu_id not in EDITABLE_MENU_IDS and menu_id not in custom_ids):
             raise AppError("연결 URL을 수정할 수 없는 카테고리입니다.")
         normalized_urls[menu_id] = normalize_menu_url(raw)
+    normalized_icons = {}
+    for menu_id, raw in icons.items():
+        if menu_id.startswith("group_") or (menu_id not in EDITABLE_MENU_IDS and menu_id not in custom_ids):
+            raise AppError("아이콘을 수정할 수 없는 카테고리입니다.")
+        icon = str(raw or "").strip()
+        if len(icon) > 8:
+            raise AppError("카테고리 아이콘은 8자 이내로 입력해 주세요.")
+        normalized_icons[menu_id] = icon
     if DB_ENABLED:
         with connection() as conn:
             with conn.cursor() as cur:
@@ -608,6 +630,11 @@ def update_menu_labels(data, actor, ip):
                         cur.execute("INSERT INTO portal_menu_links(menu_id,url,updated_by) VALUES(%s,%s,%s) ON CONFLICT(menu_id) DO UPDATE SET url=excluded.url,updated_by=excluded.updated_by,updated_at=now()", (menu_id, url or "", actor["id"]))
                     else:
                         cur.execute("UPDATE portal_custom_menu_items SET url=%s,updated_at=now() WHERE id::text=%s", (url, menu_id))
+                for menu_id, icon in normalized_icons.items():
+                    if menu_id in EDITABLE_MENU_IDS:
+                        cur.execute("INSERT INTO portal_menu_icons(menu_id,icon,updated_by) VALUES(%s,%s,%s) ON CONFLICT(menu_id) DO UPDATE SET icon=excluded.icon,updated_by=excluded.updated_by,updated_at=now()", (menu_id, icon, actor["id"]))
+                    else:
+                        cur.execute("UPDATE portal_custom_menu_items SET icon=%s,updated_at=now() WHERE id::text=%s", (icon or None, menu_id))
     else:
         for menu_id, label in normalized.items():
             if menu_id in EDITABLE_MENU_IDS:
@@ -619,7 +646,12 @@ def update_menu_labels(data, actor, ip):
                 _memory["urls"][menu_id] = url or ""
             else:
                 _memory["custom"][menu_id]["url"] = url
-    write_audit(actor["id"], "menu.config.update", "portal_menu", "navigation", {"labels": normalized, "url_menu_ids": list(normalized_urls)}, ip)
+        for menu_id, icon in normalized_icons.items():
+            if menu_id in EDITABLE_MENU_IDS:
+                _memory["icons"][menu_id] = icon
+            else:
+                _memory["custom"][menu_id]["icon"] = icon or None
+    write_audit(actor["id"], "menu.config.update", "portal_menu", "navigation", {"labels": normalized, "url_menu_ids": list(normalized_urls), "icon_menu_ids": list(normalized_icons)}, ip)
     return menu_config()
 
 
@@ -653,7 +685,7 @@ def create_menu_item(data, actor, ip):
     label = str(data.get("label") or "").strip()
     group_id = str(data.get("group_id") or "").strip()
     parent_id = str(data.get("parent_id") or "").strip() or group_id
-    icon = (str(data.get("icon") or "").strip()[:2] or "◇")
+    icon = (str(data.get("icon") or "").strip()[:8] or "◇")
     url = normalize_menu_url(data.get("url"))
     if not label or len(label) > 40:
         raise AppError("카테고리 이름은 1~40자로 입력해 주세요.")
