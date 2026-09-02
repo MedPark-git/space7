@@ -584,7 +584,7 @@ const builtInEditableMenuIds = new Set([
   "dashboard",
   "management", "management_ar", "management_hr", "management_routine",
   "marketing", "marketing_allo", "marketing_dental", "marketing_medical", "marketing_aesthetic", "marketing_global",
-  "technology", "technology_focus", "amarans", "meetings", "meetings_openai", "meetings_plaud", "meetings_plaud_device", "calendar", "tf", "tf_ar"
+  "technology", "technology_focus", "amarans", "meetings", "meetings_openai", "meetings_plaud", "meetings_plaud_device", "calendar", "admin_calendar", "tf", "tf_ar"
 ]);
 const editableTopMenuItems = () => menuGroups.flatMap((group) => group.items).filter((item) => item.id !== "admin");
 const editableMenuItems = () => editableTopMenuItems().flatMap((item) => [item, ...(item.children || [])]);
