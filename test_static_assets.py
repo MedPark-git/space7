@@ -59,6 +59,13 @@ class StaticAssetIntegrityTest(unittest.TestCase):
         for department in departments:
             self.assertEqual(html.count(f'<option value="{department}">{department}</option>'), 1)
 
+    def test_audit_log_admin_interface_is_connected(self):
+        javascript = (PUBLIC_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn("SECURITY ACTIVITY", javascript)
+        self.assertIn("/api/admin/audits?", javascript)
+        self.assertIn("감사 로그를 불러오는 중입니다.", javascript)
+        self.assertNotIn("감사 로그</h2><p>이 기능은 다음 구현 단계", javascript)
+
 
 if __name__ == "__main__":
     unittest.main()
