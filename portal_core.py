@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 SESSION_COOKIE = "medpark_session"
 SESSION_TTL = timedelta(hours=12)
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{4,30}$")
+EMPLOYEE_DEPARTMENTS = ("경영사업본부", "마케팅사업본부", "기술사업본부")
 DB_ENABLED = bool(psycopg2) and all(os.environ.get(k) for k in ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"))
 
 _database_state_lock = threading.Lock()
@@ -764,6 +765,7 @@ def create_user(data, actor, ip):
     username = str(data.get("username") or "").strip().lower()
     password = str(data.get("password") or "")
     name = str(data.get("name") or "").strip()
+    department = str(data.get("department") or "").strip()
     role = "admin" if data.get("role") == "admin" else "basic"
     if not USERNAME_RE.match(username):
         raise AppError("계정 ID는 영문자·숫자·._- 조합 4~30자로 입력해 주세요.")
@@ -771,13 +773,15 @@ def create_user(data, actor, ip):
         raise AppError("초기 비밀번호는 8자 이상이어야 합니다.")
     if not name:
         raise AppError("성명을 입력해 주세요.")
+    if department not in EMPLOYEE_DEPARTMENTS:
+        raise AppError("부서(팀)는 경영사업본부, 마케팅사업본부, 기술사업본부 중에서 선택해 주세요.")
     if find_user_by_username(username):
         raise AppError("이미 사용 중인 계정 ID입니다.", 409)
     user = {
         "id": str(uuid.uuid4()), "username": username, "email": str(data.get("email") or "").strip() or None,
         "password_hash": hash_password(password), "name": name,
         "employee_no": str(data.get("employee_no") or "").strip() or None,
-        "department": str(data.get("department") or "").strip() or None,
+        "department": department,
         "role": role, "status": "active", "created_at": datetime.now(timezone.utc),
     }
     if DB_ENABLED:
@@ -793,10 +797,13 @@ def update_user(user_id, data, actor, ip):
     existing = find_user_by_id(user_id)
     if not existing:
         raise AppError("계정을 찾을 수 없습니다.", 404)
+    department = str(data.get("department", existing.get("department") or "")).strip()
+    if "department" in data and department not in EMPLOYEE_DEPARTMENTS:
+        raise AppError("부서(팀)는 경영사업본부, 마케팅사업본부, 기술사업본부 중에서 선택해 주세요.")
     values = {
         "name": str(data.get("name", existing["name"]) or "").strip(),
         "employee_no": str(data.get("employee_no", existing.get("employee_no") or "")).strip() or None,
-        "department": str(data.get("department", existing.get("department") or "")).strip() or None,
+        "department": department or None,
         "email": str(data.get("email", existing.get("email") or "")).strip() or None,
         "role": data.get("role") if data.get("role") in ("admin", "basic") else existing["role"],
         "status": data.get("status") if data.get("status") in ("active", "terminated") else existing["status"],
