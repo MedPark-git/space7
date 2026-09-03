@@ -83,6 +83,8 @@ def login():
     data = payload()
     user = core.find_user_by_username(data.get("username"))
     if not user or user.get("status") != "active" or not core.verify_password(str(data.get("password") or ""), user.get("password_hash")):
+        attempted_username = str(data.get("username") or "").strip().lower()[:30]
+        core.write_audit(user.get("id") if user else None, "auth.login_failed", "user", attempted_username, {"username": attempted_username}, request_ip())
         return json_response({"message": "계정 ID 또는 비밀번호를 확인해 주세요."}, 401)
     token = core.create_session(user["id"])
     core.write_audit(user["id"], "auth.login", "user", str(user["id"]), {}, request_ip())
@@ -93,7 +95,11 @@ def login():
 
 @portal.post("/api/auth/logout")
 def logout():
-    core.delete_session(request.cookies.get(core.SESSION_COOKIE))
+    token = request.cookies.get(core.SESSION_COOKIE)
+    user = core.get_session_user(token)
+    if user:
+        core.write_audit(user["id"], "auth.logout", "user", str(user["id"]), {}, request_ip())
+    core.delete_session(token)
     response = json_response({"success": True})
     response.delete_cookie(core.SESSION_COOKIE, path="/")
     return response
@@ -150,6 +156,20 @@ def quick_links_put():
 def users_get():
     current_user(True)
     return json_response({"users": core.list_users()})
+
+
+@portal.get("/api/admin/audits")
+def audits_get():
+    current_user(True)
+    return json_response(core.list_audit_logs(
+        request.args.get("query", ""),
+        request.args.get("action", ""),
+        request.args.get("actor_id", ""),
+        request.args.get("date_from", ""),
+        request.args.get("date_to", ""),
+        request.args.get("page", 1),
+        request.args.get("page_size", 50),
+    ))
 
 
 @portal.post("/api/admin/users")
