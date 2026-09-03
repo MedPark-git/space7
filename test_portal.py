@@ -142,6 +142,29 @@ class PortalSmokeTest(unittest.TestCase):
         self.assertTrue(deleted.get_json()["success"])
         self.assertFalse(any(item["id"] == menu_id for item in deleted.get_json()["customItems"]))
 
+    def test_admin_user_department_classification(self):
+        self.login()
+        base_payload = {
+            "username": "department.test",
+            "password": "DepartmentTest!234",
+            "name": "부서 분류 테스트",
+            "role": "basic",
+        }
+        invalid = self.client.post(
+            "/api/admin/users",
+            json={**base_payload, "department": "경영지원본부"},
+        )
+        self.assertEqual(invalid.status_code, 400)
+
+        departments = ("경영사업본부", "마케팅사업본부", "기술사업본부")
+        for index, department in enumerate(departments):
+            response = self.client.post(
+                "/api/admin/users",
+                json={**base_payload, "username": f"department.test{index}", "department": department},
+            )
+            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.get_json()["user"]["department"], department)
+
 
 if __name__ == "__main__":
     unittest.main()
