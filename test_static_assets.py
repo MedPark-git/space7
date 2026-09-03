@@ -30,6 +30,7 @@ class MarkupAuditParser(HTMLParser):
 class StaticAssetIntegrityTest(unittest.TestCase):
     def test_public_assets_do_not_expose_redaction_markers(self):
         offenders = []
+        marker = "RED" + "ACTED"
         for path in PUBLIC_DIR.rglob("*"):
             if not path.is_file():
                 continue
@@ -37,7 +38,7 @@ class StaticAssetIntegrityTest(unittest.TestCase):
                 content = path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 continue
-            if "REDACTED" in content.upper():
+            if marker in content.upper():
                 offenders.append(str(path.relative_to(ROOT)))
         self.assertEqual(offenders, [], f"redaction markers found in public assets: {offenders}")
 
