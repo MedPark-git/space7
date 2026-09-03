@@ -132,7 +132,7 @@
           <label>계정 ID<input name="username" pattern="[A-Za-z0-9._-]{4,30}" placeholder="영문·숫자 4~30자" required /></label>
           <label>성명<input name="name" placeholder="홍길동" required /></label>
           <label>사번<input name="employee_no" placeholder="M001" /></label>
-          <label>부서<input name="department" placeholder="경영지원본부" /></label>
+          <label>부서(팀)<select name="department" required><option value="" selected disabled>부서(팀)를 선택하세요</option><option value="경영사업본부">경영사업본부</option><option value="마케팅사업본부">마케팅사업본부</option><option value="기술사업본부">기술사업본부</option></select></label>
           <label>이메일(선택)<input name="email" type="email" placeholder="name@company.com" /></label>
           <label>권한<select name="role"><option value="basic">기본(임직원)</option><option value="admin">관리자</option></select></label>
           <label id="employeePasswordField" class="full-field">초기 비밀번호<input name="password" type="password" minlength="8" placeholder="8자 이상" required /></label>
