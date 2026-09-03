@@ -165,6 +165,52 @@ class PortalSmokeTest(unittest.TestCase):
             self.assertEqual(response.status_code, 201)
             self.assertEqual(response.get_json()["user"]["department"], department)
 
+    def test_audit_logs_are_admin_only_filterable_and_secret_safe(self):
+        self.login()
+        actor = self.client.get("/api/auth/me").get_json()["user"]
+        core.write_audit(
+            actor["id"],
+            "security.test",
+            "test_target",
+            "audit-target-1",
+            {"password": "must-not-be-returned", "api_key": "must-not-be-returned", "note": "visible"},
+            "127.0.0.1",
+        )
+
+        response = self.client.get("/api/admin/audits?action=security.test&query=audit-target-1")
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["items"][0]["actor"]["username"], "admin")
+        self.assertEqual(result["items"][0]["metadata"]["password"], "보호됨")
+        self.assertEqual(result["items"][0]["metadata"]["api_key"], "보호됨")
+        self.assertEqual(result["items"][0]["metadata"]["note"], "visible")
+
+        created = self.client.post(
+            "/api/admin/users",
+            json={
+                "username": "audit.employee",
+                "password": "AuditEmployee!234",
+                "name": "감사 로그 일반직원",
+                "department": "경영사업본부",
+                "role": "basic",
+            },
+        )
+        self.assertEqual(created.status_code, 201)
+        employee_client = portal.test_client()
+        logged_in = employee_client.post(
+            "/api/auth/login",
+            json={"username": "audit.employee", "password": "AuditEmployee!234"},
+        )
+        self.assertEqual(logged_in.status_code, 200)
+        self.assertEqual(employee_client.get("/api/admin/audits").status_code, 403)
+        self.assertEqual(employee_client.post("/api/auth/logout").status_code, 200)
+
+        logout_logs = self.client.get("/api/admin/audits?action=auth.logout")
+        self.assertEqual(logout_logs.status_code, 200)
+        self.assertGreaterEqual(logout_logs.get_json()["total"], 1)
+        self.assertEqual(self.client.get("/api/admin/audits?date_from=2026/09/03").status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()
