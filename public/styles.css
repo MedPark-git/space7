@@ -518,6 +518,44 @@ a { color: inherit; text-decoration: none; }
 .admin-tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
 .admin-tabs button { padding: 10px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #788581; font-size: 10px; }
 .admin-tabs button.active { border-color: var(--green-700); color: var(--green-800); font-weight: 800; }
+.audit-manager { display: grid; gap: 16px; }
+.audit-manager-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
+.audit-manager-heading h2 { margin: 5px 0 6px; font-size: 18px; }
+.audit-manager-heading p { margin: 0; color: var(--muted); font-size: 10px; }
+.audit-filters { display: grid; grid-template-columns: minmax(210px,1.5fr) minmax(150px,1fr) minmax(150px,1fr) 132px 132px auto; gap: 9px; align-items: end; padding: 14px; border: 1px solid #dce8e4; border-radius: 11px; background: #f8fbfa; }
+.audit-filters label { display: grid; gap: 6px; color: #687671; font-size: 9px; font-weight: 750; }
+.audit-filters input, .audit-filters select { width: 100%; height: 39px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: white; color: #33423e; outline: none; }
+.audit-filters input:focus, .audit-filters select:focus { border-color: var(--green-600); box-shadow: 0 0 0 3px rgba(10,155,126,.1); }
+.audit-filters .button { height: 39px; padding-inline: 16px; }
+.audit-summary-strip { min-height: 35px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 11px; border-radius: 8px; background: var(--green-50); color: var(--green-800); font-size: 10px; }
+.audit-summary-strip b { font-size: 14px; }
+.audit-summary-strip small { color: #73817d; font-size: 8px; }
+.audit-table-wrap { overflow-x: auto; border: 1px solid #e2eae7; border-radius: 10px; }
+.audit-table { min-width: 940px; }
+.audit-table th { white-space: nowrap; }
+.audit-table td { vertical-align: top; }
+.audit-date, .audit-ip { white-space: nowrap; color: #5d6b67; font-variant-numeric: tabular-nums; }
+.audit-actor { display: grid; gap: 2px; min-width: 90px; }
+.audit-actor b { color: #2d3e39; font-size: 10px; }
+.audit-actor small, .audit-action-code { color: #8b9693; font-size: 8px; }
+.audit-action-badge { display: inline-block; padding: 5px 8px; border-radius: 999px; background: #eef4f2; color: #53645f; font-size: 8px; font-weight: 800; white-space: nowrap; }
+.audit-action-badge.auth { background: #eaf5ff; color: #376c94; }
+.audit-action-badge.user { background: #f2edff; color: #6851a4; }
+.audit-action-badge.menu { background: #e9f7f1; color: #207660; }
+.audit-action-badge.calendar { background: #fff6df; color: #8e6b1f; }
+.audit-action-badge.plaud, .audit-action-badge.plaud_device { background: #f0f0f0; color: #383838; }
+.audit-action-code { display: block; margin-top: 5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.audit-target { max-width: 210px; display: inline-block; overflow-wrap: anywhere; color: #53625e; }
+.audit-target small { color: #a1aaa7; }
+.audit-details { position: relative; }
+.audit-details summary { color: var(--green-700); font-size: 9px; font-weight: 800; cursor: pointer; }
+.audit-details pre { width: min(360px,45vw); max-height: 230px; overflow: auto; margin: 8px 0 0; padding: 10px; border: 1px solid #dfe8e5; border-radius: 8px; background: #f7faf9; color: #42514d; font: 8px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.audit-empty { padding-block: 34px !important; color: #85918d; text-align: center; }
+.audit-pagination { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.audit-pagination button { min-width: 62px; height: 32px; border: 1px solid var(--line); border-radius: 7px; background: white; color: #53635e; font-size: 9px; font-weight: 750; cursor: pointer; }
+.audit-pagination button:disabled { cursor: default; opacity: .4; }
+.audit-pagination span { min-width: 70px; color: #7a8783; text-align: center; font-size: 9px; }
+.audit-pagination b { color: var(--green-800); }
 .menu-manager-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
 .menu-manager-heading h2 { margin: 0 0 6px; font-size: 17px; }
 .menu-manager-heading p { margin: 0; color: var(--muted); font-size: 10px; }
@@ -634,6 +672,7 @@ a { color: inherit; text-decoration: none; }
   .dashboard-top-grid { grid-template-columns: minmax(0, 1fr) clamp(88px, 9vw, 106px); }
   .side-stack { grid-template-columns: 1fr 1fr; }
   .menu-admin-layout { grid-template-columns: 1fr; }
+  .audit-filters { grid-template-columns: minmax(220px,1.5fr) repeat(2,minmax(150px,1fr)); }
   .calendar-settings-layout { grid-template-columns: 220px minmax(0,1fr); }
 }
 
@@ -651,6 +690,9 @@ a { color: inherit; text-decoration: none; }
   .login-form { min-height: 540px; }
   .app-shell { grid-template-columns: 1fr; }
   .menu-group-name-grid { grid-template-columns: 1fr; }
+  .audit-manager-heading { align-items: flex-start; }
+  .audit-filters { grid-template-columns: 1fr 1fr; }
+  .audit-search-field { grid-column: 1 / -1; }
   .sidebar { position: fixed; left: 0; transform: translateX(-100%); width: 270px; transition: transform .25s ease; }
   .sidebar.open { transform: translateX(0); }
   .sidebar-backdrop.open { position: fixed; z-index: 15; inset: 0; display: block; background: rgba(3,31,26,.45); }
@@ -737,6 +779,12 @@ a { color: inherit; text-decoration: none; }
   .employee-form-grid { grid-template-columns: 1fr; }
   .employee-form-grid .full-field { grid-column: auto; }
   .menu-manager-heading { align-items: flex-start; flex-direction: column; }
+  .admin-tabs { overflow-x: auto; }
+  .admin-tabs button { flex: none; }
+  .audit-manager-heading { flex-direction: column; }
+  .audit-filters { grid-template-columns: 1fr; }
+  .audit-search-field { grid-column: auto; }
+  .audit-summary-strip { align-items: flex-start; flex-direction: column; }
   .menu-label-grid { grid-template-columns: 1fr; }
   .child-menu-list { grid-template-columns: 1fr; }
   .menu-edit-field-grid { grid-template-columns: 1fr; }
