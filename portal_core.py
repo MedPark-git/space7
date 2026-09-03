@@ -214,6 +214,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   action varchar(100) NOT NULL, target_type varchar(100), target_id varchar(255),
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb, ip_address inet, created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action_created_at ON audit_logs (action, created_at DESC);
 CREATE TABLE IF NOT EXISTS portal_menu_labels (
   menu_id varchar(50) PRIMARY KEY, label varchar(40) NOT NULL,
   updated_by uuid REFERENCES users(id) ON DELETE SET NULL, updated_at timestamptz NOT NULL DEFAULT now()
@@ -508,12 +510,160 @@ def list_users():
     return [public_user(row) for row in rows]
 
 
+SENSITIVE_AUDIT_KEY_RE = re.compile(r"password|secret|token|authorization|api[_-]?key", re.IGNORECASE)
+
+
+def _safe_audit_metadata(value):
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            return value[:500]
+    if isinstance(value, dict):
+        return {
+            str(key): "보호됨" if SENSITIVE_AUDIT_KEY_RE.search(str(key)) else _safe_audit_metadata(item)
+            for key, item in list(value.items())[:50]
+        }
+    if isinstance(value, (list, tuple)):
+        return [_safe_audit_metadata(item) for item in list(value)[:50]]
+    return value
+
+
+def _audit_date_bound(value, end=False):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        day = datetime.strptime(raw, "%Y-%m-%d").replace(tzinfo=timezone(timedelta(hours=9)))
+    except ValueError as error:
+        raise AppError("조회 기간은 YYYY-MM-DD 형식으로 입력해 주세요.") from error
+    if end:
+        day += timedelta(days=1)
+    return day.astimezone(timezone.utc)
+
+
+def _public_audit(row):
+    actor_id = row.get("actor_user_id") or row.get("actor")
+    return {
+        "id": str(row.get("id") or ""),
+        "action": str(row.get("action") or ""),
+        "target_type": str(row.get("target_type") or ""),
+        "target_id": str(row.get("target_id") or row.get("target") or ""),
+        "metadata": _safe_audit_metadata(row.get("metadata") or {}),
+        "ip_address": str(row.get("ip_address") or row.get("ip") or ""),
+        "created_at": iso(row.get("created_at")),
+        "actor": None if not actor_id else {
+            "id": str(actor_id),
+            "username": str(row.get("actor_username") or ""),
+            "name": str(row.get("actor_name") or ""),
+        },
+    }
+
+
 def write_audit(actor_id, action, target_type, target_id, metadata=None, ip=None):
     metadata = metadata or {}
     if DB_ENABLED:
         execute("INSERT INTO audit_logs(actor_user_id,action,target_type,target_id,metadata,ip_address) VALUES(%s,%s,%s,%s,%s,%s)", (actor_id, action, target_type, target_id, json.dumps(metadata, ensure_ascii=False), ip or None))
     else:
-        _memory["audit"].append({"actor": actor_id, "action": action, "target": target_id, "metadata": metadata})
+        _memory["audit"].append({
+            "id": str(uuid.uuid4()), "actor_user_id": actor_id, "action": action,
+            "target_type": target_type, "target_id": target_id, "metadata": metadata,
+            "ip_address": ip or "", "created_at": datetime.now(timezone.utc),
+        })
+
+
+def list_audit_logs(query="", action="", actor_id="", date_from="", date_to="", page=1, page_size=50):
+    query = str(query or "").strip()[:100]
+    action = str(action or "").strip()[:100]
+    actor_id = str(actor_id or "").strip()
+    start_at = _audit_date_bound(date_from)
+    end_at = _audit_date_bound(date_to, end=True)
+    if start_at and end_at and start_at >= end_at:
+        raise AppError("조회 시작일은 종료일보다 늦을 수 없습니다.")
+    try:
+        page = max(1, int(page))
+        page_size = min(100, max(10, int(page_size)))
+    except (TypeError, ValueError) as error:
+        raise AppError("페이지 정보를 확인해 주세요.") from error
+
+    if DB_ENABLED:
+        from_sql = " FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id"
+        clauses, params = [], []
+        if query:
+            like = f"%{query.lower()}%"
+            clauses.append("(lower(coalesce(u.username,'')) LIKE %s OR lower(coalesce(u.name,'')) LIKE %s OR lower(coalesce(a.action,'')) LIKE %s OR lower(coalesce(a.target_type,'')) LIKE %s OR lower(coalesce(a.target_id,'')) LIKE %s OR lower(a.metadata::text) LIKE %s)")
+            params.extend([like] * 6)
+        if action:
+            clauses.append("a.action=%s")
+            params.append(action)
+        if actor_id == "__system__":
+            clauses.append("a.actor_user_id IS NULL")
+        elif actor_id:
+            try:
+                uuid.UUID(actor_id)
+            except ValueError as error:
+                raise AppError("조회할 사용자를 확인해 주세요.") from error
+            clauses.append("a.actor_user_id=%s")
+            params.append(actor_id)
+        if start_at:
+            clauses.append("a.created_at>=%s")
+            params.append(start_at)
+        if end_at:
+            clauses.append("a.created_at<%s")
+            params.append(end_at)
+        where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        total = int((fetchone(f"SELECT count(*) AS count{from_sql}{where_sql}", tuple(params)) or {}).get("count", 0))
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = min(page, pages)
+        rows = fetchall(
+            "SELECT a.id,a.actor_user_id,a.action,a.target_type,a.target_id,a.metadata,a.ip_address::text AS ip_address,a.created_at,u.username AS actor_username,u.name AS actor_name"
+            f"{from_sql}{where_sql} ORDER BY a.created_at DESC,a.id DESC LIMIT %s OFFSET %s",
+            tuple(params + [page_size, (page - 1) * page_size]),
+        )
+        actions = [row["action"] for row in fetchall("SELECT DISTINCT action FROM audit_logs ORDER BY action")]
+        actors = fetchall("SELECT id::text,username,name FROM users ORDER BY name,username")
+    else:
+        users = {str(user["id"]): user for user in list_users()}
+        source_rows = []
+        for raw in _memory["audit"]:
+            row = dict(raw)
+            actor_key = str(row.get("actor_user_id") or row.get("actor") or "")
+            actor = users.get(actor_key, {})
+            row["actor_username"] = actor.get("username", "")
+            row["actor_name"] = actor.get("name", "")
+            source_rows.append(row)
+        actions = sorted({str(row.get("action") or "") for row in source_rows if row.get("action")})
+        actors = [{"id": user["id"], "username": user["username"], "name": user["name"]} for user in users.values()]
+
+        def included(row):
+            created_at = row.get("created_at") or datetime.min.replace(tzinfo=timezone.utc)
+            actor_key = str(row.get("actor_user_id") or row.get("actor") or "")
+            searchable = " ".join((
+                str(row.get("actor_username") or ""), str(row.get("actor_name") or ""),
+                str(row.get("action") or ""), str(row.get("target_type") or ""),
+                str(row.get("target_id") or row.get("target") or ""),
+                json.dumps(row.get("metadata") or {}, ensure_ascii=False),
+            )).lower()
+            return (
+                (not query or query.lower() in searchable)
+                and (not action or row.get("action") == action)
+                and (not actor_id or (actor_id == "__system__" and not actor_key) or actor_key == actor_id)
+                and (not start_at or created_at >= start_at)
+                and (not end_at or created_at < end_at)
+            )
+
+        filtered = [row for row in source_rows if included(row)]
+        filtered.sort(key=lambda row: row.get("created_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+        total = len(filtered)
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = min(page, pages)
+        rows = filtered[(page - 1) * page_size:page * page_size]
+
+    return {
+        "items": [_public_audit(row) for row in rows], "total": total,
+        "page": page, "page_size": page_size, "pages": pages,
+        "actions": actions, "actors": actors,
+    }
 
 
 def create_session(user_id):
