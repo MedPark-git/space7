@@ -52,6 +52,13 @@ class StaticAssetIntegrityTest(unittest.TestCase):
         self.assertIn('<option value="basic">기본(임직원)</option>', html)
         self.assertIn('<option value="admin">관리자</option>', html)
 
+    def test_employee_department_is_a_required_three_choice_select(self):
+        html = (PUBLIC_DIR / "index.html").read_text(encoding="utf-8")
+        self.assertIn('부서(팀)<select name="department" required>', html)
+        departments = ("경영사업본부", "마케팅사업본부", "기술사업본부")
+        for department in departments:
+            self.assertEqual(html.count(f'<option value="{department}">{department}</option>'), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
