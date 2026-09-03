@@ -36,6 +36,12 @@ _token_cache = {"identity": "", "access_token": "", "expires_at": 0.0}
 _event_cache_lock = threading.Lock()
 _event_cache = {}
 _calendar_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="calendar-fetch")
+_memory_settings = {
+    "id": 1, "mode": "api_key", "calendar_id": "medpark.remote@gmail.com",
+    "api_key_cipher": None, "oauth_client_id": None,
+    "oauth_client_secret_cipher": None, "oauth_refresh_token_cipher": None,
+    "selected_calendars": [], "updated_at": None,
+}
 
 HTTP_TIMEOUT_SECONDS = 8
 EVENT_CACHE_TTL_SECONDS = 300
@@ -97,6 +103,9 @@ def ensure_schema():
     global _schema_ready
     if _schema_ready:
         return
+    if not core.DB_ENABLED:
+        _schema_ready = True
+        return
     core.ensure_database_ready()
     with _schema_lock:
         if _schema_ready:
@@ -136,6 +145,8 @@ def _decrypt(value):
 
 def _settings(conn=None):
     ensure_schema()
+    if not core.DB_ENABLED:
+        return {**_memory_settings, "selected_calendars": list(_memory_settings["selected_calendars"])}
     row = core.fetchone("SELECT * FROM portal_calendar_settings WHERE id=1", conn=conn)
     if not row:
         raise CalendarError("캘린더 설정을 불러오지 못했습니다.", 503)
