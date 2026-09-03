@@ -64,6 +64,26 @@ let employeeCache = [];
 let editingEmployeeId = null;
 let quickLinks = [];
 let quickLinkCatalog = [];
+const AUDIT_ACTION_LABELS = Object.freeze({
+  "auth.login": "로그인",
+  "auth.login_failed": "로그인 실패",
+  "auth.logout": "로그아웃",
+  "user.create": "임직원 계정 등록",
+  "user.update": "임직원 계정 변경",
+  "user.quick_links.update": "자주 찾는 시스템 변경",
+  "menu.config.update": "메뉴 설정 변경",
+  "menu.item.create": "메뉴 등록",
+  "menu.item.delete": "메뉴 삭제",
+  "menu.order.update": "메뉴 순서 변경",
+  "calendar.settings.update": "캘린더 설정 변경",
+  "calendar.oauth.start": "캘린더 OAuth 시작",
+  "calendar.oauth.cancelled": "캘린더 OAuth 취소",
+  "calendar.oauth.connected": "캘린더 OAuth 연결",
+  "calendar.selection.update": "캘린더 선택 변경",
+  "plaud.meeting.create": "PLAUD 회의록 생성",
+  "plaud_device.meeting.receive": "PLAUD 기기 회의록 수신",
+  "plaud_device.meeting.delete": "PLAUD 기기 회의록 삭제"
+});
 const CALENDAR_EVENT_CACHE_MS = 5 * 60 * 1000;
 const calendarEventCache = new Map();
 const calendarEventRequests = new Map();
@@ -114,7 +134,7 @@ const formatPlaudDuration = (seconds) => {
 };
 
 const formatPlaudDate = (value) => value
-  ? new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value))
+  ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value))
   : "-";
 
 const plaudStatusMeta = (status) => ({
@@ -1252,7 +1272,95 @@ const renderAdminTab = (tab) => {
     $$('[data-menu-delete]').forEach((button) => button.addEventListener("click", () => deleteMenuItem(button.dataset.menuDelete, button.dataset.menuTitle)));
     return;
   }
-  body.innerHTML = `<div class="placeholder-state compact"><div><i>${tab === "permissions" ? "◇" : "☷"}</i><h2>${tab === "permissions" ? "권한 관리" : "감사 로그"}</h2><p>이 기능은 다음 구현 단계에서 연결됩니다.</p></div></div>`;
+  if (tab === "audits") {
+    body.innerHTML = `
+      <section class="audit-manager">
+        <header class="audit-manager-heading"><div><span class="eyebrow">SECURITY ACTIVITY</span><h2>감사 로그</h2><p>로그인, 계정·메뉴 변경, 캘린더와 회의록 연동 이력을 최신순으로 확인합니다.</p></div><button id="auditRefresh" type="button" class="button secondary">새로고침</button></header>
+        <form id="auditFilters" class="audit-filters">
+          <label class="audit-search-field"><span>통합 검색</span><input name="query" placeholder="사용자·활동·대상 검색" /></label>
+          <label><span>활동 유형</span><select name="action"><option value="">전체 활동</option></select></label>
+          <label><span>작업자</span><select name="actor_id"><option value="">전체 작업자</option><option value="__system__">시스템</option></select></label>
+          <label><span>시작일</span><input name="date_from" type="date" /></label>
+          <label><span>종료일</span><input name="date_to" type="date" /></label>
+          <button class="button primary" type="submit">조회</button>
+        </form>
+        <div class="audit-summary-strip"><span>조회 결과 <b id="auditTotal">-</b>건</span><small>표시 시각: 대한민국 표준시 기준</small></div>
+        <div class="audit-table-wrap">
+          <table class="data-table audit-table"><thead><tr><th>발생 일시</th><th>작업자</th><th>활동</th><th>대상</th><th>접속 IP</th><th>상세</th></tr></thead><tbody id="auditRows"><tr><td colspan="6">감사 로그를 불러오는 중입니다.</td></tr></tbody></table>
+        </div>
+        <nav id="auditPagination" class="audit-pagination" aria-label="감사 로그 페이지"></nav>
+      </section>`;
+    $("#auditFilters").addEventListener("submit", (event) => { event.preventDefault(); loadAuditLogs(1); });
+    $("#auditRefresh").addEventListener("click", () => loadAuditLogs(1));
+    loadAuditLogs(1);
+    return;
+  }
+  body.innerHTML = `<div class="placeholder-state compact"><div><i>◇</i><h2>권한 관리</h2><p>이 기능은 다음 구현 단계에서 연결됩니다.</p></div></div>`;
+};
+
+const auditActionLabel = (action) => AUDIT_ACTION_LABELS[action] || action || "알 수 없는 활동";
+
+const updateAuditFilterOptions = (result) => {
+  const actionSelect = $('#auditFilters select[name="action"]');
+  const actorSelect = $('#auditFilters select[name="actor_id"]');
+  if (!actionSelect || !actorSelect) return;
+  const selectedAction = actionSelect.value;
+  const selectedActor = actorSelect.value;
+  actionSelect.innerHTML = `<option value="">전체 활동</option>${(result.actions || []).map((action) => `<option value="${escapeHtml(action)}">${escapeHtml(auditActionLabel(action))}</option>`).join("")}`;
+  actorSelect.innerHTML = `<option value="">전체 작업자</option><option value="__system__">시스템</option>${(result.actors || []).map((actor) => `<option value="${escapeHtml(actor.id)}">${escapeHtml(actor.name || actor.username)} · ${escapeHtml(actor.username)}</option>`).join("")}`;
+  actionSelect.value = selectedAction;
+  actorSelect.value = selectedActor;
+};
+
+const renderAuditRows = (items) => {
+  const rows = $("#auditRows");
+  if (!rows) return;
+  rows.innerHTML = items.map((item) => {
+    const actorName = item.actor ? (item.actor.name || item.actor.username || "삭제된 계정") : "시스템";
+    const actorAccount = item.actor?.username && item.actor.username !== actorName ? item.actor.username : "";
+    const target = [item.target_type, item.target_id].filter(Boolean);
+    const metadata = JSON.stringify(item.metadata || {}, null, 2);
+    const actionGroup = String(item.action || "system").split(".")[0].replace(/[^a-z_]/gi, "") || "system";
+    return `<tr>
+      <td class="audit-date">${escapeHtml(formatPlaudDate(item.created_at))}</td>
+      <td><span class="audit-actor"><b>${escapeHtml(actorName)}</b>${actorAccount ? `<small>${escapeHtml(actorAccount)}</small>` : ""}</span></td>
+      <td><span class="audit-action-badge ${escapeHtml(actionGroup)}">${escapeHtml(auditActionLabel(item.action))}</span><small class="audit-action-code">${escapeHtml(item.action)}</small></td>
+      <td><span class="audit-target">${target.length ? target.map(escapeHtml).join("<small> · </small>") : "-"}</span></td>
+      <td class="audit-ip">${escapeHtml(item.ip_address || "-")}</td>
+      <td>${metadata === "{}" ? "-" : `<details class="audit-details"><summary>보기</summary><pre>${escapeHtml(metadata)}</pre></details>`}</td>
+    </tr>`;
+  }).join("") || '<tr><td colspan="6" class="audit-empty">조건에 맞는 감사 로그가 없습니다.</td></tr>';
+};
+
+const renderAuditPagination = (page, pages) => {
+  const host = $("#auditPagination");
+  if (!host) return;
+  host.innerHTML = `<button type="button" data-audit-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>이전</button><span><b>${page}</b> / ${pages}</span><button type="button" data-audit-page="${page + 1}" ${page >= pages ? "disabled" : ""}>다음</button>`;
+  $$('[data-audit-page]').forEach((button) => button.addEventListener("click", () => loadAuditLogs(Number(button.dataset.auditPage))));
+};
+
+const loadAuditLogs = async (page = 1) => {
+  const form = $("#auditFilters");
+  const rows = $("#auditRows");
+  if (!form || !rows) return;
+  const params = new URLSearchParams();
+  for (const [key, value] of new FormData(form)) if (String(value).trim()) params.set(key, value);
+  params.set("page", String(page));
+  params.set("page_size", "50");
+  rows.innerHTML = '<tr><td colspan="6">감사 로그를 불러오는 중입니다.</td></tr>';
+  try {
+    const response = await fetch(`/api/admin/audits?${params.toString()}`, { headers: { accept: "application/json" } });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    if (!$("#auditRows")) return;
+    updateAuditFilterOptions(result);
+    renderAuditRows(result.items || []);
+    $("#auditTotal").textContent = Number(result.total || 0).toLocaleString("ko-KR");
+    renderAuditPagination(Number(result.page || 1), Number(result.pages || 1));
+  } catch (error) {
+    if ($("#auditRows")) $("#auditRows").innerHTML = `<tr><td colspan="6" class="audit-empty">${escapeHtml(error.message || "감사 로그를 불러오지 못했습니다.")}</td></tr>`;
+    if ($("#auditPagination")) $("#auditPagination").innerHTML = "";
+  }
 };
 
 const saveMenuLabels = async (event) => {
