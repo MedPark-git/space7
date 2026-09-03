@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import uuid
+from copy import copy
 from datetime import datetime, timezone
 from io import BytesIO
 from urllib.parse import urlsplit
@@ -418,7 +419,10 @@ def build_excel(meeting_id, actor):
 
     for row_cells in sheet.iter_rows(min_row=3, max_row=current_row - 1, min_col=1, max_col=6):
         for cell in row_cells:
-            cell.font = cell.font.copy(name="맑은 고딕", size=10)
+            updated_font = copy(cell.font)
+            updated_font.name = "맑은 고딕"
+            updated_font.sz = 10
+            cell.font = updated_font
             cell.border = border
             if cell.column == 1 and cell.row <= 7:
                 cell.font = Font(name="맑은 고딕", size=10, bold=True, color=green)
