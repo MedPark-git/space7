@@ -82,10 +82,15 @@ def login():
     core.ensure_database_ready()
     data = payload()
     user = core.find_user_by_username(data.get("username"))
-    if not user or user.get("status") != "active" or not core.verify_password(str(data.get("password") or ""), user.get("password_hash")):
+    password_valid = bool(user) and core.verify_password(str(data.get("password") or ""), user.get("password_hash"))
+    if not user or not password_valid:
         attempted_username = str(data.get("username") or "").strip().lower()[:30]
         core.write_audit(user.get("id") if user else None, "auth.login_failed", "user", attempted_username, {"username": attempted_username}, request_ip())
         return json_response({"message": "계정 ID 또는 비밀번호를 확인해 주세요."}, 401)
+    if user.get("status") == "pending":
+        return json_response({"message": "임직원 등록 신청이 관리자 승인 대기 중입니다."}, 403)
+    if user.get("status") != "active":
+        return json_response({"message": "비활성화된 계정입니다. 관리자에게 문의해 주세요."}, 403)
     token = core.create_session(user["id"])
     core.write_audit(user["id"], "auth.login", "user", str(user["id"]), {}, request_ip())
     response = json_response({"user": core.public_user(user)})
@@ -108,6 +113,16 @@ def logout():
 @portal.get("/api/auth/me")
 def me():
     return json_response({"user": core.public_user(current_user())})
+
+
+@portal.post("/api/auth/register")
+def register():
+    core.ensure_database_ready()
+    user = core.request_user_registration(payload(), request_ip())
+    return json_response({
+        "message": "임직원 등록 신청이 완료되었습니다. 관리자 승인 후 로그인할 수 있습니다.",
+        "status": user["status"],
+    }, 201)
 
 
 @portal.get("/api/menu")
@@ -182,6 +197,18 @@ def users_post():
 def users_patch(user_id):
     actor = current_user(True)
     return json_response({"user": core.update_user(str(user_id), payload(), actor, request_ip())})
+
+
+@portal.post("/api/admin/users/<uuid:user_id>/approve")
+def users_approve(user_id):
+    actor = current_user(True)
+    return json_response({"user": core.approve_user(str(user_id), actor, request_ip())})
+
+
+@portal.delete("/api/admin/users/<uuid:user_id>")
+def users_delete(user_id):
+    actor = current_user(True)
+    return json_response(core.delete_user(str(user_id), actor, request_ip()))
 
 
 @portal.post("/api/admin/plaud/test")
