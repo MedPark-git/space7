@@ -165,6 +165,76 @@ class PortalSmokeTest(unittest.TestCase):
             self.assertEqual(response.status_code, 201)
             self.assertEqual(response.get_json()["user"]["department"], department)
 
+    def test_employee_self_registration_admin_approval_and_deletion(self):
+        registration_payload = {
+            "username": "amarans.employee",
+            "password": "EmployeeRequest!234",
+            "name": "임직원 신청 테스트",
+            "employee_no": "",
+            "department": "마케팅사업본부",
+            "email": "employee@example.com",
+            "role": "admin",
+        }
+        requested = self.client.post("/api/auth/register", json=registration_payload)
+        self.assertEqual(requested.status_code, 201)
+        self.assertEqual(requested.get_json()["status"], "pending")
+        self.assertNotIn("role", requested.get_json())
+        self.assertEqual(self.client.post("/api/auth/register", json=registration_payload).status_code, 409)
+
+        pending_login = self.client.post(
+            "/api/auth/login",
+            json={"username": registration_payload["username"], "password": registration_payload["password"]},
+        )
+        self.assertEqual(pending_login.status_code, 403)
+        self.assertIn("승인 대기", pending_login.get_json()["message"])
+
+        self.login()
+        users = self.client.get("/api/admin/users").get_json()["users"]
+        applicant = next(user for user in users if user["username"] == registration_payload["username"])
+        self.assertEqual(applicant["status"], "pending")
+        self.assertEqual(applicant["role"], "basic")
+        self.assertEqual(applicant["employee_no"], "")
+
+        approved = self.client.post(f"/api/admin/users/{applicant['id']}/approve")
+        self.assertEqual(approved.status_code, 200)
+        self.assertEqual(approved.get_json()["user"]["status"], "active")
+        self.assertEqual(self.client.post(f"/api/admin/users/{applicant['id']}/approve").status_code, 409)
+
+        employee_client = portal.test_client()
+        logged_in = employee_client.post(
+            "/api/auth/login",
+            json={"username": registration_payload["username"], "password": registration_payload["password"]},
+        )
+        self.assertEqual(logged_in.status_code, 200)
+        self.assertEqual(employee_client.delete(f"/api/admin/users/{applicant['id']}").status_code, 403)
+
+        deleted = self.client.delete(f"/api/admin/users/{applicant['id']}")
+        self.assertEqual(deleted.status_code, 200)
+        self.assertTrue(deleted.get_json()["success"])
+        self.assertEqual(employee_client.get("/api/auth/me").status_code, 401)
+        self.assertEqual(self.client.delete(f"/api/admin/users/{self.client.get('/api/auth/me').get_json()['user']['id']}").status_code, 400)
+
+        direct = self.client.post(
+            "/api/admin/users",
+            json={
+                "username": "admin.direct",
+                "password": "AdminDirect!234",
+                "name": "관리자 직접 등록",
+                "department": "기술사업본부",
+                "role": "admin",
+            },
+        )
+        self.assertEqual(direct.status_code, 201)
+        self.assertEqual(direct.get_json()["user"]["status"], "active")
+        self.assertEqual(direct.get_json()["user"]["role"], "admin")
+        self.assertEqual(direct.get_json()["user"]["employee_no"], "")
+        self.assertEqual(self.client.delete(f"/api/admin/users/{direct.get_json()['user']['id']}").status_code, 200)
+
+        for action in ("user.registration.request", "user.approve", "user.delete"):
+            audit = self.client.get(f"/api/admin/audits?action={action}")
+            self.assertEqual(audit.status_code, 200)
+            self.assertGreaterEqual(audit.get_json()["total"], 1)
+
     def test_audit_logs_are_admin_only_filterable_and_secret_safe(self):
         self.login()
         actor = self.client.get("/api/auth/me").get_json()["user"]
