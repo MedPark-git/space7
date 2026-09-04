@@ -506,7 +506,14 @@ def find_user_by_id(user_id):
 
 
 def list_users():
-    rows = fetchall("SELECT * FROM users ORDER BY created_at DESC") if DB_ENABLED else list(_memory["users"].values())
+    if DB_ENABLED:
+        rows = fetchall("SELECT * FROM users ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'active' THEN 1 ELSE 2 END, created_at DESC")
+    else:
+        status_order = {"pending": 0, "active": 1, "terminated": 2}
+        rows = sorted(
+            _memory["users"].values(),
+            key=lambda row: (status_order.get(row.get("status"), 3), -(row.get("created_at") or datetime.min.replace(tzinfo=timezone.utc)).timestamp()),
+        )
     return [public_user(row) for row in rows]
 
 
@@ -911,14 +918,13 @@ def update_quick_links(data, user, ip):
     return get_quick_links(user["id"])
 
 
-def create_user(data, actor, ip):
+def _create_user(data, role, status):
     username = str(data.get("username") or "").strip().lower()
     password = str(data.get("password") or "")
     name = str(data.get("name") or "").strip()
     department = str(data.get("department") or "").strip()
-    role = "admin" if data.get("role") == "admin" else "basic"
     if not USERNAME_RE.match(username):
-        raise AppError("계정 ID는 영문자·숫자·._- 조합 4~30자로 입력해 주세요.")
+        raise AppError("아마란스 계정 ID는 영문자·숫자·._- 조합 4~30자로 입력해 주세요.")
     if len(password) < 8:
         raise AppError("초기 비밀번호는 8자 이상이어야 합니다.")
     if not name:
@@ -927,20 +933,74 @@ def create_user(data, actor, ip):
         raise AppError("부서(팀)는 경영사업본부, 마케팅사업본부, 기술사업본부 중에서 선택해 주세요.")
     if find_user_by_username(username):
         raise AppError("이미 사용 중인 계정 ID입니다.", 409)
+    employee_no = str(data.get("employee_no") or "").strip() or None
+    if employee_no:
+        duplicate_employee_no = fetchone("SELECT id FROM users WHERE employee_no=%s LIMIT 1", (employee_no,)) if DB_ENABLED else next(
+            (user for user in _memory["users"].values() if user.get("employee_no") == employee_no), None
+        )
+        if duplicate_employee_no:
+            raise AppError("이미 사용 중인 사번입니다.", 409)
     user = {
         "id": str(uuid.uuid4()), "username": username, "email": str(data.get("email") or "").strip() or None,
         "password_hash": hash_password(password), "name": name,
-        "employee_no": str(data.get("employee_no") or "").strip() or None,
+        "employee_no": employee_no,
         "department": department,
-        "role": role, "status": "active", "created_at": datetime.now(timezone.utc),
+        "role": role, "status": status, "created_at": datetime.now(timezone.utc),
     }
     if DB_ENABLED:
         row = execute("INSERT INTO users(id,username,email,password_hash,name,employee_no,department,role,status) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *", (user["id"], user["username"], user["email"], user["password_hash"], user["name"], user["employee_no"], user["department"], user["role"], user["status"]))
         user = row
     else:
         _memory["users"][user["id"]] = user
+    return user
+
+
+def create_user(data, actor, ip):
+    role = "admin" if data.get("role") == "admin" else "basic"
+    user = _create_user(data, role, "active")
+    username = user["username"]
     write_audit(actor["id"], "user.create", "user", str(user["id"]), {"username": username, "role": role}, ip)
     return public_user(user)
+
+
+def request_user_registration(data, ip):
+    user = _create_user(data, "basic", "pending")
+    write_audit(None, "user.registration.request", "user", str(user["id"]), {"username": user["username"]}, ip)
+    return public_user(user)
+
+
+def approve_user(user_id, actor, ip):
+    existing = find_user_by_id(user_id)
+    if not existing:
+        raise AppError("승인할 계정을 찾을 수 없습니다.", 404)
+    if existing.get("status") != "pending":
+        raise AppError("승인 대기 중인 계정만 승인할 수 있습니다.", 409)
+    if DB_ENABLED:
+        row = execute("UPDATE users SET status='active',terminated_at=NULL,updated_at=now() WHERE id=%s RETURNING *", (user_id,))
+    else:
+        existing.update({"status": "active", "terminated_at": None, "updated_at": datetime.now(timezone.utc)})
+        row = existing
+    write_audit(actor["id"], "user.approve", "user", str(user_id), {"username": existing["username"]}, ip)
+    return public_user(row)
+
+
+def delete_user(user_id, actor, ip):
+    existing = find_user_by_id(user_id)
+    if not existing:
+        raise AppError("삭제할 계정을 찾을 수 없습니다.", 404)
+    if str(actor["id"]) == str(user_id):
+        raise AppError("현재 로그인한 관리자 계정은 삭제할 수 없습니다.")
+    metadata = {"username": existing["username"], "role": existing["role"], "status": existing["status"]}
+    if DB_ENABLED:
+        execute("DELETE FROM users WHERE id=%s RETURNING id", (user_id,))
+    else:
+        _memory["users"].pop(str(user_id), None)
+        _memory["quick"].pop(str(user_id), None)
+        for key, item in list(_memory["sessions"].items()):
+            if item["user_id"] == str(user_id):
+                _memory["sessions"].pop(key, None)
+    write_audit(actor["id"], "user.delete", "user", str(user_id), metadata, ip)
+    return {"success": True, "deleted_user_id": str(user_id)}
 
 
 def update_user(user_id, data, actor, ip):
