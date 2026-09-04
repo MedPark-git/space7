@@ -115,6 +115,10 @@ a { color: inherit; text-decoration: none; }
 .check { display: flex; align-items: center; gap: 7px; }
 .check input { width: 14px; height: 14px; }
 .form-error { min-height: 16px; margin: -8px 0; color: #c73f3f; font-size: 11px; }
+.registration-callout { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 12px; margin-top: 2px; padding: 13px 14px; border: 1px solid #d8e9e4; border-radius: 10px; background: #f5faf8; }
+.registration-callout span { color: #53635e; font-size: 11px; font-weight: 700; }
+.registration-callout button { padding: 0; border: 0; background: transparent; color: var(--green-700); font-size: 11px; font-weight: 850; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.registration-callout small { grid-column: 1 / -1; color: #82908c; font-size: 9px; }
 .preview-account { display: flex; justify-content: space-between; padding: 11px 13px; border-radius: 8px; background: var(--green-50); color: #66807a; font-size: 10px; }
 .preview-account b { color: var(--green-800); }
 .spinner { display: none; width: 17px; height: 17px; margin: auto; border: 2px solid rgba(255,255,255,.35); border-top-color: white; border-radius: 50%; animation: spin .8s linear infinite; }
@@ -515,6 +519,11 @@ a { color: inherit; text-decoration: none; }
 .data-table td { padding: 14px 11px; border-bottom: 1px solid #edf1f0; }
 .tag { display: inline-block; padding: 5px 8px; border-radius: 6px; background: var(--green-50); color: var(--green-800); font-size: 8px; font-weight: 750; }
 .tag.gray { background: #eef1f0; color: #7e8885; }
+.tag.pending { background: #fff3d6; color: #91671b; }
+.employee-admin-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.employee-admin-summary .toolbar { flex: 1; margin-bottom: 0; }
+.pending-status { min-height: 39px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid #f0d79b; border-radius: 9px; background: #fff9eb; color: #8a641e; font-size: 10px; font-weight: 750; white-space: nowrap; }
+.pending-user-row { background: #fffdf7; }
 .admin-tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
 .admin-tabs button { padding: 10px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #788581; font-size: 10px; }
 .admin-tabs button.active { border-color: var(--green-700); color: var(--green-800); font-weight: 800; }
@@ -640,6 +649,8 @@ a { color: inherit; text-decoration: none; }
 .employee-form-grid input, .employee-form-grid select { width: 100%; height: 43px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfc; outline: none; }
 .employee-form-grid input:focus, .employee-form-grid select:focus { border-color: var(--green-600); box-shadow: 0 0 0 3px rgba(10,155,126,.1); }
 .employee-form-grid .full-field { grid-column: 1 / -1; }
+.employee-form-grid .field-hint { color: #87938f; font-size: 8px; font-weight: 500; line-height: 1.45; }
+.registration-role-notice { margin: 17px 0 0; padding: 11px 13px; border-radius: 8px; background: var(--green-50); color: var(--green-800); font-size: 9px; font-weight: 700; }
 .employee-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 .quick-links-dialog { width: min(520px, 94vw); padding: 0; border: 0; border-radius: 16px; box-shadow: 0 28px 80px rgba(0,0,0,.25); }
 .quick-links-dialog::backdrop { background: rgba(6,38,33,.55); backdrop-filter: blur(6px); }
@@ -657,9 +668,12 @@ a { color: inherit; text-decoration: none; }
 .quick-links-options span b { font-size: 10px; }
 .quick-links-options span small { margin-top: 4px; color: #8b9693; font-size: 8px; }
 .quick-links-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-.account-actions { display: flex; gap: 5px; }
+.account-actions { display: flex; flex-wrap: wrap; gap: 5px; }
 .account-actions button { padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: white; color: #60706c; font-size: 8px; }
 .account-actions button:hover { border-color: #a9d6ca; color: var(--green-800); }
+.account-actions button.approve { border-color: #80c8b4; background: var(--green-50); color: var(--green-800); font-weight: 850; }
+.account-actions button.danger { border-color: #efcccc; color: #b54545; }
+.account-actions button.danger:hover { border-color: #d98989; background: #fff5f5; color: #9f3030; }
 .sidebar-backdrop { display: none; }
 .mobile-only { display: none; }
 
@@ -773,6 +787,8 @@ a { color: inherit; text-decoration: none; }
   .event-dot { display: none; }
   .side-stack { grid-template-columns: 1fr; }
   .toolbar { flex-direction: column; }
+  .employee-admin-summary { flex-direction: column; }
+  .employee-admin-summary .toolbar { width: 100%; }
   .data-table { min-width: 630px; }
   .content-panel { overflow-x: auto; padding: 16px; }
   .preview-account { flex-direction: column; gap: 5px; }
