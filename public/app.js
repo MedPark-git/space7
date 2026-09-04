@@ -47,6 +47,8 @@ const guestView = $("#guestView");
 const appView = $("#appView");
 const loginModal = $("#loginModal");
 const loginForm = $("#loginForm");
+const registrationDialog = $("#registrationDialog");
+const registrationForm = $("#registrationForm");
 const pageContent = $("#pageContent");
 const searchDialog = $("#searchDialog");
 const employeeDialog = $("#employeeDialog");
@@ -68,8 +70,11 @@ const AUDIT_ACTION_LABELS = Object.freeze({
   "auth.login": "로그인",
   "auth.login_failed": "로그인 실패",
   "auth.logout": "로그아웃",
+  "user.registration.request": "임직원 등록 신청",
+  "user.approve": "임직원 계정 승인",
   "user.create": "임직원 계정 등록",
   "user.update": "임직원 계정 변경",
+  "user.delete": "임직원 계정 삭제",
   "user.quick_links.update": "자주 찾는 시스템 변경",
   "menu.config.update": "메뉴 설정 변경",
   "menu.item.create": "메뉴 등록",
@@ -703,6 +708,42 @@ $("#resetLink").addEventListener("click", (event) => {
   showToast("운영 버전에서 관리자에게 재설정을 요청할 수 있습니다.");
 });
 
+$("#openRegistration").addEventListener("click", () => {
+  closeLogin();
+  registrationForm.reset();
+  $("#registrationFormError").textContent = "";
+  registrationDialog.showModal();
+  setTimeout(() => registrationForm.elements.username.focus(), 100);
+});
+$$('[data-close-registration]').forEach((button) => button.addEventListener("click", () => registrationDialog.close()));
+registrationDialog.addEventListener("click", (event) => {
+  if (event.target === registrationDialog) registrationDialog.close();
+});
+
+registrationForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submit = $("#registrationSubmitButton");
+  const data = Object.fromEntries(new FormData(registrationForm));
+  $("#registrationFormError").textContent = "";
+  submit.disabled = true;
+  try {
+    const response = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    registrationForm.reset();
+    registrationDialog.close();
+    showToast(result.message || "임직원 등록 신청이 완료되었습니다.");
+  } catch (error) {
+    $("#registrationFormError").textContent = error.message || "임직원 등록 신청에 실패했습니다.";
+  } finally {
+    submit.disabled = false;
+  }
+});
+
 const enforceEnglishLoginInput = (input, allowedPattern) => {
   const clean = () => {
     const next = [...input.value].filter((character) => allowedPattern.test(character)).join("");
@@ -1152,7 +1193,7 @@ const renderDashboard = () => {
 
 const renderAdmin = () => {
   pageContent.innerHTML = `
-    <section class="page-heading"><div><span class="eyebrow">ADMINISTRATION</span><h1>포털 관리</h1><p>임직원, 메뉴와 접근 권한을 코드 수정 없이 관리합니다.</p></div><button id="addEmployee" class="button primary">＋ 임직원 등록</button></section>
+    <section class="page-heading"><div><span class="eyebrow">ADMINISTRATION</span><h1>포털 관리</h1><p>임직원 신청 승인, 계정, 메뉴와 접근 권한을 관리합니다.</p></div><button id="addEmployee" class="button primary">＋ 관리자 직접 등록</button></section>
     <section class="content-panel"><div class="admin-tabs"><button class="active" data-admin-tab="employees">임직원 관리</button><button data-admin-tab="menus">메뉴 관리</button><button data-admin-tab="permissions">권한 관리</button><button data-admin-tab="audits">감사 로그</button></div><div id="adminBody"></div></section>`;
   renderAdminTab("employees");
   $$('.admin-tabs [data-admin-tab]').forEach((button) => button.addEventListener("click", () => {
@@ -1220,7 +1261,7 @@ const renderAdminTab = (tab) => {
   if (tab === "employees") {
     addButton.hidden = false;
     body.innerHTML = `
-      <div class="toolbar"><input id="employeeSearch" placeholder="계정 ID, 이름, 사번, 부서 검색" /><span class="live-status"><i></i> 활성 임직원 <b id="activeCount">-</b>명</span></div>
+      <div class="employee-admin-summary"><div class="toolbar"><input id="employeeSearch" placeholder="계정 ID, 이름, 사번, 부서 검색" /><span class="live-status"><i></i> 활성 임직원 <b id="activeCount">-</b>명</span></div><span class="pending-status">승인 대기 <b id="pendingCount">-</b>명</span></div>
       <table class="data-table"><thead><tr><th>계정 ID</th><th>성명</th><th>사번</th><th>소속</th><th>권한</th><th>상태</th><th>관리</th></tr></thead><tbody id="employeeRows"><tr><td colspan="7">계정 정보를 불러오는 중입니다.</td></tr></tbody></table>`;
     loadEmployees();
     $("#employeeSearch").addEventListener("input", (event) => {
@@ -1455,6 +1496,7 @@ const loadEmployees = async () => {
     if (!$("#employeeRows")) return;
     renderEmployees(employeeCache);
     if ($("#activeCount")) $("#activeCount").textContent = employeeCache.filter((user) => user.status === "active").length;
+    if ($("#pendingCount")) $("#pendingCount").textContent = employeeCache.filter((user) => user.status === "pending").length;
   } catch (error) {
     if ($("#employeeRows")) $("#employeeRows").innerHTML = `<tr><td colspan="7">${escapeHtml(error.message || "계정 정보를 불러오지 못했습니다.")}</td></tr>`;
   }
@@ -1462,11 +1504,13 @@ const loadEmployees = async () => {
 
 const renderEmployees = (rows) => {
   if (!$("#employeeRows")) return;
-  $("#employeeRows").innerHTML = rows.map((user) => `<tr>
+  const statusLabel = (status) => status === "active" ? "활성" : status === "pending" ? "승인 대기" : "비활성";
+  $("#employeeRows").innerHTML = rows.map((user) => `<tr class="${user.status === "pending" ? "pending-user-row" : ""}">
     <td><b>${escapeHtml(user.username)}</b></td><td>${escapeHtml(user.name)}</td><td>${escapeHtml(user.employee_no || "-")}</td><td>${escapeHtml(user.department || "-")}</td>
-    <td><span class="tag">${user.role === "admin" ? "관리자" : "기본(임직원)"}</span></td><td><span class="tag ${user.status !== "active" ? "gray" : ""}">${user.status === "active" ? "활성" : "비활성"}</span></td>
-    <td><div class="account-actions"><button data-edit-user="${user.id}">정보 수정</button><button data-toggle-user="${user.id}" data-next-status="${user.status === "active" ? "terminated" : "active"}">${user.status === "active" ? "비활성화" : "재활성화"}</button><button data-reset-user="${user.id}">비밀번호 초기화</button></div></td>
+    <td><span class="tag">${user.role === "admin" ? "관리자" : "기본(임직원)"}</span></td><td><span class="tag ${user.status === "pending" ? "pending" : user.status !== "active" ? "gray" : ""}">${statusLabel(user.status)}</span></td>
+    <td><div class="account-actions">${user.status === "pending" ? `<button class="approve" data-approve-user="${user.id}">신청 승인</button>` : ""}<button data-edit-user="${user.id}">정보 수정</button>${user.status !== "pending" ? `<button data-toggle-user="${user.id}" data-next-status="${user.status === "active" ? "terminated" : "active"}">${user.status === "active" ? "비활성화" : "재활성화"}</button><button data-reset-user="${user.id}">비밀번호 초기화</button>` : ""}<button class="danger" data-delete-user="${user.id}" data-delete-username="${escapeHtml(user.username)}">삭제</button></div></td>
   </tr>`).join("") || '<tr><td colspan="7">등록된 계정이 없습니다.</td></tr>';
+  $$('[data-approve-user]').forEach((button) => button.addEventListener("click", () => approveEmployee(button.dataset.approveUser)));
   $$('[data-edit-user]').forEach((button) => button.addEventListener("click", () => openEditEmployee(button.dataset.editUser)));
   $$('[data-toggle-user]').forEach((button) => button.addEventListener("click", async () => {
     if (button.dataset.toggleUser === currentUser?.id && button.dataset.nextStatus === "terminated") return showToast("현재 로그인한 관리자 계정은 비활성화할 수 없습니다.");
@@ -1476,6 +1520,7 @@ const renderEmployees = (rows) => {
     const password = prompt("새 초기 비밀번호를 입력하세요. (8자 이상)");
     if (password) await updateEmployee(button.dataset.resetUser, { password });
   }));
+  $$('[data-delete-user]').forEach((button) => button.addEventListener("click", () => deleteEmployee(button.dataset.deleteUser, button.dataset.deleteUsername)));
 };
 
 const configureEmployeeDialog = (mode, user = null) => {
@@ -1486,7 +1531,7 @@ const configureEmployeeDialog = (mode, user = null) => {
   form.reset();
   $("#employeeFormError").textContent = "";
   $("#employeeDialogTitle").textContent = mode === "edit" ? "임직원 정보 수정" : "임직원 계정 등록";
-  $("#employeeDialogDescription").textContent = mode === "edit" ? "계정 ID를 제외한 임직원 정보를 수정합니다." : "로그인에 사용할 계정 ID와 초기 정보를 입력합니다.";
+  $("#employeeDialogDescription").textContent = mode === "edit" ? "계정 ID를 제외한 임직원 정보를 수정합니다." : "관리자가 계정을 즉시 활성 상태로 직접 등록합니다.";
   $("#employeeSubmitButton").textContent = mode === "edit" ? "변경사항 저장" : "계정 등록";
   $("#employeePasswordField").hidden = mode === "edit";
   usernameInput.disabled = mode === "edit";
@@ -1522,6 +1567,30 @@ const updateEmployee = async (id, payload) => {
     showToast("계정 정보가 변경되었습니다.");
     await loadEmployees();
   } catch (error) { showToast(error.message || "계정 변경에 실패했습니다."); }
+};
+
+const approveEmployee = async (id) => {
+  const user = employeeCache.find((item) => item.id === id);
+  if (!user || !window.confirm(`${user.name} (${user.username})님의 임직원 등록 신청을 승인하시겠습니까?`)) return;
+  try {
+    const response = await fetch(`/api/admin/users/${id}/approve`, { method: "POST", headers: { accept: "application/json" } });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    showToast(`${result.user.username} 계정이 승인되었습니다.`);
+    await loadEmployees();
+  } catch (error) { showToast(error.message || "계정 승인에 실패했습니다."); }
+};
+
+const deleteEmployee = async (id, username) => {
+  if (id === currentUser?.id) return showToast("현재 로그인한 관리자 계정은 삭제할 수 없습니다.");
+  if (!window.confirm(`${username} 계정을 삭제하시겠습니까?\n삭제된 계정은 로그인할 수 없으며 되돌릴 수 없습니다.`)) return;
+  try {
+    const response = await fetch(`/api/admin/users/${id}`, { method: "DELETE", headers: { accept: "application/json" } });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    showToast(`${username} 계정이 삭제되었습니다.`);
+    await loadEmployees();
+  } catch (error) { showToast(error.message || "계정 삭제에 실패했습니다."); }
 };
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
