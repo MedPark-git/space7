@@ -57,7 +57,22 @@ class StaticAssetIntegrityTest(unittest.TestCase):
         self.assertIn('부서(팀)<select name="department" required>', html)
         departments = ("경영사업본부", "마케팅사업본부", "기술사업본부")
         for department in departments:
-            self.assertEqual(html.count(f'<option value="{department}">{department}</option>'), 1)
+            self.assertEqual(html.count(f'<option value="{department}">{department}</option>'), 2)
+
+    def test_employee_registration_and_admin_approval_interface_is_connected(self):
+        html = (PUBLIC_DIR / "index.html").read_text(encoding="utf-8")
+        javascript = (PUBLIC_DIR / "app.js").read_text(encoding="utf-8")
+        registration_markup = html.split('<dialog id="registrationDialog"', 1)[1].split("</dialog>", 1)[0]
+        self.assertIn("아직 임직원 계정이 없으신가요?", html)
+        self.assertIn("임직원 등록 신청", html)
+        self.assertGreaterEqual(html.count("아마란스 계정"), 2)
+        self.assertEqual(html.count("사번(선택)"), 2)
+        self.assertNotIn('name="role"', registration_markup)
+        self.assertIn("/api/auth/register", javascript)
+        self.assertIn("/approve", javascript)
+        self.assertIn('method: "DELETE"', javascript)
+        self.assertIn("관리자 직접 등록", javascript)
+        self.assertIn("20260904-registration1", html)
 
     def test_audit_log_admin_interface_is_connected(self):
         javascript = (PUBLIC_DIR / "app.js").read_text(encoding="utf-8")
