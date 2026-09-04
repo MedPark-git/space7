@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#075f51" />
     <title>MedPark One | 사내 통합 포털</title>
-    <link rel="stylesheet" href="./styles.css?v=20260903-audit1" />
+    <link rel="stylesheet" href="./styles.css?v=20260904-registration1" />
   </head>
   <body>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -85,6 +85,7 @@
           <div class="form-options"><label class="check"><input type="checkbox" /> 계정 ID 저장</label><a href="#" id="resetLink">비밀번호 재설정</a></div>
           <p id="loginError" class="form-error"></p>
           <button class="button primary full large" type="submit"><span class="button-label">로그인</span><span class="spinner"></span></button>
+          <div class="registration-callout"><span>아직 임직원 계정이 없으신가요?</span><button id="openRegistration" type="button">임직원 등록 신청</button><small>신청 후 관리자 승인이 완료되면 로그인할 수 있습니다.</small></div>
         </form>
       </section>
     </div>
@@ -129,9 +130,9 @@
       <form id="employeeForm" method="dialog">
         <header><div><span class="eyebrow">ADMIN ONLY</span><h2 id="employeeDialogTitle">임직원 계정 등록</h2><p id="employeeDialogDescription">로그인에 사용할 계정 ID와 초기 정보를 입력합니다.</p></div><button type="button" data-close-employee aria-label="닫기">×</button></header>
         <div class="employee-form-grid">
-          <label>계정 ID<input name="username" pattern="[A-Za-z0-9._-]{4,30}" placeholder="영문·숫자 4~30자" required /></label>
+          <label>계정 ID (아마란스 계정)<input name="username" pattern="[A-Za-z0-9._-]{4,30}" placeholder="아마란스 계정 ID" required /><small class="field-hint">아마란스에서 사용하는 계정을 입력하세요.</small></label>
           <label>성명<input name="name" placeholder="홍길동" required /></label>
-          <label>사번<input name="employee_no" placeholder="M001" /></label>
+          <label>사번(선택)<input name="employee_no" placeholder="M001" /></label>
           <label>부서(팀)<select name="department" required><option value="" selected disabled>부서(팀)를 선택하세요</option><option value="경영사업본부">경영사업본부</option><option value="마케팅사업본부">마케팅사업본부</option><option value="기술사업본부">기술사업본부</option></select></label>
           <label>이메일(선택)<input name="email" type="email" placeholder="name@company.com" /></label>
           <label>권한<select name="role"><option value="basic">기본(임직원)</option><option value="admin">관리자</option></select></label>
@@ -139,6 +140,23 @@
         </div>
         <p id="employeeFormError" class="form-error"></p>
         <footer><button type="button" class="button secondary" data-close-employee>취소</button><button id="employeeSubmitButton" type="submit" class="button primary">계정 등록</button></footer>
+      </form>
+    </dialog>
+
+    <dialog id="registrationDialog" class="employee-dialog registration-dialog">
+      <form id="registrationForm" method="dialog">
+        <header><div><span class="eyebrow">EMPLOYEE REGISTRATION</span><h2>임직원 등록 신청</h2><p>신청 정보를 확인한 뒤 관리자가 계정을 승인합니다.</p></div><button type="button" data-close-registration aria-label="닫기">×</button></header>
+        <div class="employee-form-grid">
+          <label>계정 ID (아마란스 계정)<input name="username" pattern="[A-Za-z0-9._-]{4,30}" placeholder="아마란스 계정 ID" autocomplete="username" required /><small class="field-hint">아마란스에서 사용하는 계정을 입력하세요.</small></label>
+          <label>성명<input name="name" placeholder="홍길동" autocomplete="name" required /></label>
+          <label>사번(선택)<input name="employee_no" placeholder="선택 입력" /></label>
+          <label>부서(팀)<select name="department" required><option value="" selected disabled>부서(팀)를 선택하세요</option><option value="경영사업본부">경영사업본부</option><option value="마케팅사업본부">마케팅사업본부</option><option value="기술사업본부">기술사업본부</option></select></label>
+          <label>이메일(선택)<input name="email" type="email" placeholder="name@company.com" autocomplete="email" /></label>
+          <label>비밀번호<input name="password" type="password" minlength="8" placeholder="8자 이상" autocomplete="new-password" required /><small class="field-hint">승인 후 로그인할 때 사용할 비밀번호입니다.</small></label>
+        </div>
+        <p class="registration-role-notice">권한은 기본 임직원으로 신청되며 관리자 승인 후 활성화됩니다.</p>
+        <p id="registrationFormError" class="form-error"></p>
+        <footer><button type="button" class="button secondary" data-close-registration>취소</button><button id="registrationSubmitButton" type="submit" class="button primary">등록 신청</button></footer>
       </form>
     </dialog>
 
@@ -156,6 +174,6 @@
       <div id="calendarEventDetail" class="calendar-event-dialog-panel"></div>
     </dialog>
 
-    <script src="./app.js?v=20260903-audit1" type="module"></script>
+    <script src="./app.js?v=20260904-registration1" type="module"></script>
   </body>
 </html>
