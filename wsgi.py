@@ -67,18 +67,23 @@ FORCE_LINK_JS = r'''
 })();
 '''
 
+
 @app.get("/meeting-openai-force.js")
 def meeting_openai_force_js():
     response = Response(FORCE_LINK_JS, mimetype="application/javascript")
     response.headers["Cache-Control"] = "no-store, max-age=0"
     return response
 
-# 4) 기존 index view를 교체해 실제 운영 HTML에 강제 링크 스크립트를 직접 삽입한다.
+# 4) 실제 운영 HTML에 필요한 보강 스크립트를 주입한다.
 def _patched_index():
     html = (PUBLIC / "index.html").read_text(encoding="utf-8")
-    marker = '<script src="/meeting-openai-force.js?v=20260911-final-direct-link"></script>'
-    if marker not in html:
-        html = html.replace("</body>", marker + "\n</body>", 1)
+    markers = [
+        '<script src="/meeting-openai-force.js?v=20260911-final-direct-link"></script>',
+        '<script src="/plaud-embedded-android.js?v=20260911-android-embedded1" defer></script>',
+    ]
+    for marker in markers:
+        if marker not in html:
+            html = html.replace("</body>", marker + "\n</body>", 1)
     response = Response(html, mimetype="text/html")
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
