@@ -1,17 +1,20 @@
 from app import app
 import portal_core as core
 
+# Always provide the MedPark Meeting (space_06) URL when the OpenAI meeting
+# menu has no URL configured in the portal DB. Existing explicit admin URLs
+# still take precedence so the menu remains configurable later.
+_ORIGINAL_MENU_CONFIG = core.menu_config
+_MEETING_OPENAI_URL = "https://medprk-medpark-meeting.mycafe24.ai/"
 
-MEETINGS_OPENAI_URL = "https://medprk-medpark-meeting.mycafe24.ai/"
-_original_menu_config = core.menu_config
 
-
-def _menu_config_with_meetings_openai_link():
-    config = _original_menu_config()
-    config.setdefault("urls", {})["meetings_openai"] = MEETINGS_OPENAI_URL
+def _menu_config_with_meeting_fallback():
+    config = _ORIGINAL_MENU_CONFIG()
+    urls = dict(config.get("urls") or {})
+    if not str(urls.get("meetings_openai") or "").strip():
+        urls["meetings_openai"] = _MEETING_OPENAI_URL
+    config["urls"] = urls
     return config
 
 
-# The MedPark One navigation reads menu URLs from /api/menu.
-# Keep the OpenAI meeting-minutes menu bound to the dedicated space_06 site.
-core.menu_config = _menu_config_with_meetings_openai_link
+core.menu_config = _menu_config_with_meeting_fallback
