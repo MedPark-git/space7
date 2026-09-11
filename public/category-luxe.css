@@ -1,0 +1,278 @@
+/* MedPark One - Category Order Panel visual refresh (2026-09-11) */
+
+.menu-order-panel {
+  position: relative;
+  overflow: hidden;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid rgba(8, 108, 91, .15);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(40, 183, 145, .14), transparent 34%),
+    linear-gradient(180deg, #ffffff 0%, #f7fbf9 100%);
+  box-shadow: 0 22px 55px rgba(7, 84, 72, .10);
+}
+
+.menu-order-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, #0a9b7e 0%, #32c39a 45%, #78d8bd 100%);
+}
+
+.menu-order-panel::after {
+  content: "CATEGORY FLOW";
+  position: absolute;
+  right: 18px;
+  top: 17px;
+  padding: 5px 8px;
+  border: 1px solid rgba(8, 108, 91, .10);
+  border-radius: 999px;
+  background: rgba(240, 250, 246, .9);
+  color: #4b8e7f;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 1.1px;
+}
+
+.menu-order-panel > .eyebrow {
+  padding-right: 92px;
+}
+
+.menu-order-panel h2 {
+  margin-top: 3px;
+  color: #123c34;
+  font-size: 18px;
+  letter-spacing: -.7px;
+}
+
+.menu-order-panel > p {
+  max-width: 250px;
+  color: #6f827c;
+  line-height: 1.65;
+}
+
+.menu-order-panel > .button,
+.menu-order-panel button[type="submit"] {
+  border-radius: 10px;
+  box-shadow: 0 9px 20px rgba(8, 108, 91, .14);
+}
+
+.category-order-list {
+  gap: 11px;
+}
+
+.category-order-list.nested {
+  position: relative;
+  gap: 7px;
+  margin: 10px 8px 10px 20px;
+  padding: 2px 0 2px 14px;
+  border-left: 0;
+}
+
+.category-order-list.nested::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 0;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(10,155,126,.55), rgba(10,155,126,.10));
+}
+
+.category-order-group {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #d8e9e3;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .95);
+  box-shadow: 0 7px 18px rgba(12, 72, 61, .06);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+.category-order-group:hover {
+  transform: translateY(-1px);
+  border-color: #b7dacc;
+  box-shadow: 0 13px 28px rgba(12, 72, 61, .10);
+}
+
+.category-order-group > header {
+  position: relative;
+  min-height: 48px;
+  padding: 9px 10px 9px 14px;
+  border-bottom: 1px solid rgba(8, 108, 91, .08);
+  background:
+    linear-gradient(110deg, rgba(225,247,239,.95) 0%, rgba(244,251,248,.98) 58%, rgba(255,255,255,.98) 100%);
+  color: #075f51;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.category-order-group > header::before {
+  content: "";
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  margin-right: 3px;
+  border-radius: 9px;
+  background:
+    linear-gradient(145deg, #0b8c76, #075f51);
+  box-shadow: 0 6px 14px rgba(8, 108, 91, .22), inset 0 0 0 1px rgba(255,255,255,.16);
+}
+
+.category-order-group > header::after {
+  content: "≡";
+  position: absolute;
+  left: 22px;
+  top: 50%;
+  transform: translate(-50%, -51%);
+  color: white;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.category-order-group > .category-order-list {
+  padding: 10px;
+  background: linear-gradient(180deg, rgba(248,252,250,.9), rgba(255,255,255,.98));
+}
+
+.category-order-item {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #e2ece8;
+  border-radius: 11px;
+  background: #ffffff;
+  color: #425a53;
+  box-shadow: 0 3px 8px rgba(7, 84, 72, .035);
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+.category-order-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, #22b58d, #0a7c69);
+  opacity: .78;
+}
+
+.category-order-item:hover {
+  transform: translateX(2px);
+  border-color: #b6dccf;
+  background: linear-gradient(90deg, #f5fcf9 0%, #ffffff 58%);
+  box-shadow: 0 8px 18px rgba(8, 108, 91, .08);
+}
+
+.category-order-item > div {
+  min-height: 43px;
+  padding: 7px 7px 7px 13px;
+}
+
+.category-order-item > div > span {
+  font-weight: 780;
+  letter-spacing: -.1px;
+}
+
+.category-order-item i {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  border-radius: 7px;
+  background: linear-gradient(145deg, #e5f7f0, #f4fbf8);
+  color: #087563;
+  box-shadow: inset 0 0 0 1px rgba(8,117,99,.08);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.category-order-item.child {
+  border-color: #e8efed;
+  background: rgba(255,255,255,.98);
+  color: #62766f;
+}
+
+.category-order-item.child::before {
+  width: 2px;
+  background: linear-gradient(180deg, #91cab9, #d7ece5);
+}
+
+.category-order-item.child > div {
+  min-height: 38px;
+  padding-left: 11px;
+}
+
+.category-order-item.child i {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
+  border-radius: 6px;
+  background: #f0f7f4;
+  color: #659b8d;
+  font-size: 8px;
+}
+
+.category-order-actions {
+  gap: 5px;
+}
+
+.category-order-move {
+  position: relative;
+  width: 27px;
+  height: 27px;
+  border: 1px solid #d5e5df;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #ffffff, #f3f8f6);
+  color: #55766d;
+  box-shadow: 0 2px 5px rgba(6, 70, 58, .05);
+  font-size: 10px;
+  font-weight: 900;
+  transition: transform .15s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+.category-order-move:hover {
+  transform: translateY(-1px);
+  border-color: #7fc7b2;
+  background: linear-gradient(145deg, #e6f7f1, #ffffff);
+  color: #066755;
+  box-shadow: 0 7px 14px rgba(8, 108, 91, .11);
+}
+
+.category-order-move:active {
+  transform: translateY(0) scale(.96);
+}
+
+/* Give each top-level category a subtle identity while keeping MedPark green as the base. */
+.category-order-list > .category-order-group:nth-child(1) > header {
+  background: linear-gradient(110deg, #e8f4ff 0%, #f7fbff 62%, #ffffff 100%);
+  color: #356783;
+}
+.category-order-list > .category-order-group:nth-child(1) > header::before {
+  background: linear-gradient(145deg, #5799bd, #356783);
+  box-shadow: 0 6px 14px rgba(53,103,131,.20), inset 0 0 0 1px rgba(255,255,255,.16);
+}
+.category-order-list > .category-order-group:nth-child(2) > header {
+  background: linear-gradient(110deg, #e3f7ef 0%, #f6fcf9 62%, #ffffff 100%);
+  color: #087563;
+}
+.category-order-list > .category-order-group:nth-child(3) > header {
+  background: linear-gradient(110deg, #f1ecff 0%, #fbf9ff 62%, #ffffff 100%);
+  color: #66579a;
+}
+.category-order-list > .category-order-group:nth-child(3) > header::before {
+  background: linear-gradient(145deg, #8a75c5, #66579a);
+  box-shadow: 0 6px 14px rgba(102,87,154,.20), inset 0 0 0 1px rgba(255,255,255,.16);
+}
+
+@media (max-width: 1100px) {
+  .menu-order-panel { padding: 17px; border-radius: 15px; }
+  .menu-order-panel::after { display: none; }
+  .menu-order-panel > .eyebrow { padding-right: 0; }
+  .category-order-group > header { min-height: 44px; }
+}
