@@ -93,9 +93,13 @@ def _patched_index():
         "plaud-device-registry-ui.js?v=20260911-device-registry2",
         "plaud-device-registry-ui.js?v=20260911-device-registry-stable1",
     )
-    marker = '<script src="/meeting-openai-force.js?v=20260911-final-direct-link"></script>'
-    if marker not in html:
-        html = html.replace("</body>", marker + "\n</body>", 1)
+    markers = [
+        '<script src="/meeting-openai-force.js?v=20260911-final-direct-link"></script>',
+        '<script src="/admin-only-plaud-device-menu.js?v=20260911-admin-only1" defer></script>',
+    ]
+    for marker in markers:
+        if marker not in html:
+            html = html.replace("</body>", marker + "\n</body>", 1)
     response = Response(html, mimetype="text/html")
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
