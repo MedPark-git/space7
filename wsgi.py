@@ -6,7 +6,6 @@ from flask import Response, redirect
 
 MEETING_OPENAI_URL = "https://medprk-medpark-meeting.mycafe24.ai/"
 
-# Keep the OpenAI meeting menu linked to the dedicated meeting service.
 _original_menu_config = core.menu_config
 
 
@@ -76,8 +75,6 @@ def meeting_openai_force_js():
 # Real PLAUD Device Registry APIs.
 device_registry.install(app)
 
-# When a registered device exists for a portal user, use that stable Partner User ID
-# for PLAUD upload/transcription token generation as well.
 _original_plaud_user_id = plaud._plaud_user_id
 
 
@@ -89,10 +86,13 @@ def _registry_aware_plaud_user_id(user):
 plaud._plaud_user_id = _registry_aware_plaud_user_id
 
 
-# The PLAUD UI scripts are loaded directly by public/index.html.
-# Do not inject them again here; duplicate execution caused SPA render conflicts.
 def _patched_index():
     html = (PUBLIC / "index.html").read_text(encoding="utf-8")
+    # Force a fresh fetch of the stabilized registry UI while keeping a single load source.
+    html = html.replace(
+        "plaud-device-registry-ui.js?v=20260911-device-registry2",
+        "plaud-device-registry-ui.js?v=20260911-device-registry-stable1",
+    )
     marker = '<script src="/meeting-openai-force.js?v=20260911-final-direct-link"></script>'
     if marker not in html:
         html = html.replace("</body>", marker + "\n</body>", 1)
