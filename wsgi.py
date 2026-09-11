@@ -1,10 +1,12 @@
 from app import app, PUBLIC
 import portal_core as core
+import plaud_integration as plaud
+import plaud_device_registry as device_registry
 from flask import Response, redirect
 
 MEETING_OPENAI_URL = "https://medprk-medpark-meeting.mycafe24.ai/"
 
-# 1) API 메뉴 설정도 항상 space_06 주소를 반환하도록 강제한다.
+# Keep the OpenAI meeting menu linked to the dedicated meeting service.
 _original_menu_config = core.menu_config
 
 
@@ -18,16 +20,15 @@ def _forced_menu_config():
 
 core.menu_config = _forced_menu_config
 
-# 2) 내부 Placeholder 경로 대신 사용할 단순 리다이렉트 브리지.
+
 @app.get("/meeting-openai-link")
 def meeting_openai_link():
     return redirect(MEETING_OPENAI_URL, code=302)
 
-# 3) 메뉴가 버튼으로 다시 렌더링되더라도 실제 <a href> 링크로 교체한다.
+
 FORCE_LINK_JS = r'''
 (() => {
   const BRIDGE = "/meeting-openai-link";
-
   function convertMeetingOpenAiMenu() {
     document.querySelectorAll('[data-sub-page="meetings_openai"]').forEach((button) => {
       if (button.tagName === "A") return;
@@ -41,7 +42,6 @@ FORCE_LINK_JS = r'''
       if (arrow) arrow.textContent = "↗";
       button.replaceWith(link);
     });
-
     document.querySelectorAll('a[data-external^="회의록_OpenAI"]').forEach((link) => {
       link.href = BRIDGE;
       link.target = "_self";
@@ -50,7 +50,6 @@ FORCE_LINK_JS = r'''
       if (arrow) arrow.textContent = "↗";
     });
   }
-
   document.addEventListener("click", (event) => {
     const target = event.target.closest('[data-meeting-openai-direct="1"], [data-sub-page="meetings_openai"]');
     if (!target) return;
@@ -59,7 +58,6 @@ FORCE_LINK_JS = r'''
     if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
     window.location.assign(BRIDGE);
   }, true);
-
   const observer = new MutationObserver(convertMeetingOpenAiMenu);
   observer.observe(document.documentElement, { childList: true, subtree: true });
   document.addEventListener("DOMContentLoaded", convertMeetingOpenAiMenu);
@@ -74,12 +72,30 @@ def meeting_openai_force_js():
     response.headers["Cache-Control"] = "no-store, max-age=0"
     return response
 
-# 4) 실제 운영 HTML에 필요한 보강 스크립트를 주입한다.
+
+# Real PLAUD Device Registry APIs.
+device_registry.install(app)
+
+# When a registered device exists for a portal user, use that stable Partner User ID
+# for PLAUD upload/transcription token generation as well.
+_original_plaud_user_id = plaud._plaud_user_id
+
+
+def _registry_aware_plaud_user_id(user):
+    registered = device_registry.partner_user_for_portal_user(user)
+    return registered or _original_plaud_user_id(user)
+
+
+plaud._plaud_user_id = _registry_aware_plaud_user_id
+
+
+# Inject supplemental UI scripts into the actual portal index.
 def _patched_index():
     html = (PUBLIC / "index.html").read_text(encoding="utf-8")
     markers = [
         '<script src="/meeting-openai-force.js?v=20260911-final-direct-link"></script>',
-        '<script src="/plaud-embedded-android.js?v=20260911-android-embedded1" defer></script>',
+        '<script src="/plaud-embedded-android.js?v=20260911-android-embedded2" defer></script>',
+        '<script src="/plaud-device-registry-ui.js?v=20260911-device-registry1" defer></script>',
     ]
     for marker in markers:
         if marker not in html:
