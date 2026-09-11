@@ -26,14 +26,38 @@ core.menu_config = _menu_config_with_meeting_fallback
 # internal placeholder button. Capture-phase handling runs before app.js.
 _MEETING_LINK_FIX = r'''
 <script>
-document.addEventListener("click", function (event) {
-  var target = event.target.closest('[data-sub-page="meetings_openai"], a[data-external^="회의록_OpenAI"]');
-  if (!target) return;
-  event.preventDefault();
-  event.stopPropagation();
-  if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-  window.open("https://medprk-medpark-meeting.mycafe24.ai/", "_blank", "noopener,noreferrer");
-}, true);
+(function () {
+  var meetingUrl = "https://medprk-medpark-meeting.mycafe24.ai/";
+
+  function applyMeetingLinkVisual() {
+    var internalButton = document.querySelector('[data-sub-page="meetings_openai"]');
+    if (internalButton) {
+      internalButton.setAttribute("title", "space_06 회의록 열기");
+      internalButton.style.cursor = "pointer";
+      var indicator = internalButton.querySelector("b");
+      if (indicator) indicator.textContent = "↗";
+    }
+    document.querySelectorAll('a[data-external^="회의록_OpenAI"]').forEach(function (link) {
+      link.href = meetingUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      var indicator = link.querySelector("b");
+      if (indicator) indicator.textContent = "↗";
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", applyMeetingLinkVisual);
+  new MutationObserver(applyMeetingLinkVisual).observe(document.documentElement, { childList: true, subtree: true });
+
+  document.addEventListener("click", function (event) {
+    var target = event.target.closest('[data-sub-page="meetings_openai"], a[data-external^="회의록_OpenAI"]');
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+    window.open(meetingUrl, "_blank", "noopener,noreferrer");
+  }, true);
+})();
 </script>
 '''
 
