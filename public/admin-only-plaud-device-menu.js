@@ -1,7 +1,7 @@
 (() => {
-  const STYLE_ID = "plaudDeviceAdminOnlyStyle";
-  const ROLE_ATTR = "data-plaud-device-role";
-  const TARGET_SUB_PAGE = "meetings_plaud_device";
+  const STYLE_ID = "plaudAdminOnlyMenuStyle";
+  const ROLE_ATTR = "data-plaud-admin-menu-role";
+  const TARGET_SUB_PAGES = new Set(["meetings_plaud", "meetings_plaud_device"]);
   let role = "unknown";
   let checking = false;
   let lastCheckedAt = 0;
@@ -12,17 +12,30 @@
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-      html:not([${ROLE_ATTR}="admin"]) #mainNav [data-sub-page="${TARGET_SUB_PAGE}"],
-      html:not([${ROLE_ATTR}="admin"]) #searchResults [data-sub-page="${TARGET_SUB_PAGE}"] {
+      html:not([${ROLE_ATTR}="admin"]) #mainNav [data-sub-page="meetings_plaud"],
+      html:not([${ROLE_ATTR}="admin"]) #mainNav [data-sub-page="meetings_plaud_device"],
+      html:not([${ROLE_ATTR}="admin"]) #searchResults [data-sub-page="meetings_plaud"],
+      html:not([${ROLE_ATTR}="admin"]) #searchResults [data-sub-page="meetings_plaud_device"] {
         display: none !important;
       }
     `;
     document.head.appendChild(style);
   }
 
-  function isPlaudDeviceLabel(text) {
+  function isProtectedPlaudLabel(text) {
     const compact = String(text || "").replace(/\s+/g, "");
-    return compact.includes("회의록_Plaud(기기)") || compact.includes("회의록Plaud(기기)");
+    return (
+      compact.includes("회의록_Plaud(기기)") ||
+      compact.includes("회의록Plaud(기기)") ||
+      compact.includes("회의록_Plaud") ||
+      compact.includes("회의록Plaud")
+    );
+  }
+
+  function isTargetNode(node) {
+    const subPage = node.getAttribute("data-sub-page") || "";
+    if (TARGET_SUB_PAGES.has(subPage)) return true;
+    return isProtectedPlaudLabel(node.textContent);
   }
 
   function applyVisibility() {
@@ -32,16 +45,15 @@
     );
 
     candidates.forEach((node) => {
-      const isTarget = node.getAttribute("data-sub-page") === TARGET_SUB_PAGE || isPlaudDeviceLabel(node.textContent);
-      if (!isTarget) return;
+      if (!isTargetNode(node)) return;
 
       if (isAdmin) {
-        if (node.dataset.plaudDeviceRoleHidden === "1") {
+        if (node.dataset.plaudAdminRoleHidden === "1") {
           node.style.removeProperty("display");
-          delete node.dataset.plaudDeviceRoleHidden;
+          delete node.dataset.plaudAdminRoleHidden;
         }
       } else {
-        node.dataset.plaudDeviceRoleHidden = "1";
+        node.dataset.plaudAdminRoleHidden = "1";
         node.style.setProperty("display", "none", "important");
       }
     });
@@ -110,6 +122,14 @@
   document.addEventListener("click", (event) => {
     if (event.target?.closest?.("#logout")) {
       setRole("basic");
+      return;
+    }
+
+    const target = event.target?.closest?.('[data-sub-page="meetings_plaud"], [data-sub-page="meetings_plaud_device"]');
+    if (target && role !== "admin") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
     }
   }, true);
 
