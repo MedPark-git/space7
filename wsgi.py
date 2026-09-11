@@ -1,16 +1,10 @@
-from pathlib import Path
-
+from app import app, PUBLIC
+import portal_core as core
 from flask import Response, redirect
 
-from app import app
-import portal_core as core
-
-
 MEETING_OPENAI_URL = "https://medprk-medpark-meeting.mycafe24.ai/"
-ROOT = Path(__file__).resolve().parent
-INDEX_HTML = ROOT / "public" / "index.html"
 
-# 1) API/DB 값과 무관하게 회의록_OpenAI 메뉴 URL을 space_06으로 고정한다.
+# 1) API 메뉴 설정도 항상 space_06 주소를 반환하도록 강제한다.
 _original_menu_config = core.menu_config
 
 
@@ -24,67 +18,67 @@ def _forced_menu_config():
 
 core.menu_config = _forced_menu_config
 
+# 2) 내부 Placeholder 경로 대신 사용할 단순 리다이렉트 브리지.
+@app.get("/meeting-openai-link")
+def meeting_openai_link():
+    return redirect(MEETING_OPENAI_URL, code=302)
 
-# 2) 실제 홈 HTML에 직접 스크립트를 삽입한다.
-# app.py의 send_from_directory 응답 후처리가 아니라 이 view 자체가 HTML을 반환하므로
-# 브라우저에 반드시 아래 스크립트가 전달된다.
-_MEETING_LINK_SCRIPT = r'''
-<script id="medpark-meeting-openai-direct-link">
-(function () {
-  const meetingUrl = "https://medprk-medpark-meeting.mycafe24.ai/";
+# 3) 메뉴가 버튼으로 다시 렌더링되더라도 실제 <a href> 링크로 교체한다.
+FORCE_LINK_JS = r'''
+(() => {
+  const BRIDGE = "/meeting-openai-link";
 
-  function convertMeetingMenuToLink() {
-    const nav = document.getElementById("mainNav");
-    if (!nav) return;
-
-    nav.querySelectorAll('button[data-sub-page="meetings_openai"]').forEach(function (button) {
+  function convertMeetingOpenAiMenu() {
+    document.querySelectorAll('[data-sub-page="meetings_openai"]').forEach((button) => {
+      if (button.tagName === "A") return;
       const link = document.createElement("a");
-      link.href = meetingUrl;
-      link.rel = "noopener noreferrer";
-      link.className = button.className || "";
+      link.className = button.className;
+      link.href = BRIDGE;
+      link.target = "_self";
+      link.setAttribute("data-meeting-openai-direct", "1");
       link.innerHTML = button.innerHTML;
-      link.setAttribute("data-external", "회의록_OpenAI_(예정)");
-      link.setAttribute("data-url", meetingUrl);
-      link.setAttribute("aria-label", "회의록_OpenAI_(예정) 연결 사이트 열기");
-      const arrow = link.querySelector("b");
+      const arrow = link.querySelector("b:last-child");
       if (arrow) arrow.textContent = "↗";
       button.replaceWith(link);
     });
 
-    nav.querySelectorAll('a[data-external^="회의록_OpenAI"]').forEach(function (link) {
-      link.href = meetingUrl;
-      link.removeAttribute("target");
-      link.rel = "noopener noreferrer";
-      link.setAttribute("data-url", meetingUrl);
-      const arrow = link.querySelector("b");
+    document.querySelectorAll('a[data-external^="회의록_OpenAI"]').forEach((link) => {
+      link.href = BRIDGE;
+      link.target = "_self";
+      link.setAttribute("data-meeting-openai-direct", "1");
+      const arrow = link.querySelector("b:last-child");
       if (arrow) arrow.textContent = "↗";
     });
   }
 
-  function start() {
-    const nav = document.getElementById("mainNav");
-    if (!nav) return;
-    convertMeetingMenuToLink();
-    new MutationObserver(convertMeetingMenuToLink).observe(nav, {
-      childList: true,
-      subtree: true
-    });
-  }
+  document.addEventListener("click", (event) => {
+    const target = event.target.closest('[data-meeting-openai-direct="1"], [data-sub-page="meetings_openai"]');
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+    window.location.assign(BRIDGE);
+  }, true);
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", start, { once: true });
-  } else {
-    start();
-  }
+  const observer = new MutationObserver(convertMeetingOpenAiMenu);
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  document.addEventListener("DOMContentLoaded", convertMeetingOpenAiMenu);
+  convertMeetingOpenAiMenu();
 })();
-</script>
 '''
 
+@app.get("/meeting-openai-force.js")
+def meeting_openai_force_js():
+    response = Response(FORCE_LINK_JS, mimetype="application/javascript")
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
 
-def _index_with_direct_meeting_link():
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    if "medpark-meeting-openai-direct-link" not in html:
-        html = html.replace("</body>", _MEETING_LINK_SCRIPT + "\n</body>", 1)
+# 4) 기존 index view를 교체해 실제 운영 HTML에 강제 링크 스크립트를 직접 삽입한다.
+def _patched_index():
+    html = (PUBLIC / "index.html").read_text(encoding="utf-8")
+    marker = '<script src="/meeting-openai-force.js?v=20260911-final-direct-link"></script>'
+    if marker not in html:
+        html = html.replace("</body>", marker + "\n</body>", 1)
     response = Response(html, mimetype="text/html")
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
@@ -92,10 +86,4 @@ def _index_with_direct_meeting_link():
     return response
 
 
-app.view_functions["index"] = _index_with_direct_meeting_link
-
-
-# 직접 확인/우회용 주소. 접속 시 space_06으로 즉시 이동한다.
-@app.get("/meeting-openai-link")
-def meeting_openai_link_bridge():
-    return redirect(MEETING_OPENAI_URL, code=302)
+app.view_functions["index"] = _patched_index
