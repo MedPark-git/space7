@@ -89,17 +89,13 @@ def _registry_aware_plaud_user_id(user):
 plaud._plaud_user_id = _registry_aware_plaud_user_id
 
 
-# Inject supplemental UI scripts into the actual portal index.
+# The PLAUD UI scripts are loaded directly by public/index.html.
+# Do not inject them again here; duplicate execution caused SPA render conflicts.
 def _patched_index():
     html = (PUBLIC / "index.html").read_text(encoding="utf-8")
-    markers = [
-        '<script src="/meeting-openai-force.js?v=20260911-final-direct-link"></script>',
-        '<script src="/plaud-embedded-android.js?v=20260911-android-embedded2" defer></script>',
-        '<script src="/plaud-device-registry-ui.js?v=20260911-device-registry1" defer></script>',
-    ]
-    for marker in markers:
-        if marker not in html:
-            html = html.replace("</body>", marker + "\n</body>", 1)
+    marker = '<script src="/meeting-openai-force.js?v=20260911-final-direct-link"></script>'
+    if marker not in html:
+        html = html.replace("</body>", marker + "\n</body>", 1)
     response = Response(html, mimetype="text/html")
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
