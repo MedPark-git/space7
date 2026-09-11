@@ -128,7 +128,11 @@ def register():
 @portal.get("/api/menu")
 def menu_get():
     current_user()
-    return json_response(core.menu_config())
+    config = core.menu_config()
+    urls = dict(config.get("urls") or {})
+    urls["meetings_openai"] = "https://medprk-medpark-meeting.mycafe24.ai/"
+    config["urls"] = urls
+    return json_response(config)
 
 
 @portal.patch("/api/admin/menu")
