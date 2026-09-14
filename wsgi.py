@@ -101,6 +101,7 @@ def _patched_index():
     markers = [
         '<script src="/meeting-openai-force.js?v=20260911-final-direct-link"></script>',
         '<script src="/admin-only-plaud-device-menu.js?v=20260911-admin-only1" defer></script>',
+        '<script src="/plaud-user-source-fix.js?v=20260914-portal-users1" defer></script>',
     ]
     for marker in markers:
         if marker not in html:
