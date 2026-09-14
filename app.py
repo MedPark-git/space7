@@ -5,8 +5,10 @@ from pathlib import Path
 from flask import Flask, jsonify, make_response, redirect, request, send_file, send_from_directory
 from werkzeug.exceptions import HTTPException
 
+import android_device_registry as android_registry
 import calendar_integration as calendar
 import plaud_device_integration as plaud_device
+import plaud_device_registry as plaud_registry
 import plaud_integration as plaud
 import portal_core as core
 
@@ -405,6 +407,14 @@ def calendar_oauth_callback():
 def calendar_events():
     current_user()
     return json_response(calendar.list_events(request.args.get("month")))
+
+
+# Install Device Registry APIs directly on the primary Flask app so they work
+# regardless of whether the runtime enters through app.py or wsgi.py.
+if "plaud_devices_list" not in portal.view_functions:
+    plaud_registry.install(portal)
+if "android_devices_list" not in portal.view_functions:
+    android_registry.install(portal)
 
 
 @portal.get("/")
