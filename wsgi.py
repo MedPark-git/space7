@@ -91,18 +91,13 @@ plaud._plaud_user_id = _registry_aware_plaud_user_id
 
 def _patched_index():
     html = (PUBLIC / "index.html").read_text(encoding="utf-8")
-    html = html.replace(
+    for previous in (
         "plaud-device-registry-ui.js?v=20260911-device-registry2",
-        "plaud-device-registry-ui.js?v=20260914-device-registry-easy2",
-    )
-    html = html.replace(
         "plaud-device-registry-ui.js?v=20260911-device-registry-stable1",
-        "plaud-device-registry-ui.js?v=20260914-device-registry-easy2",
-    )
-    html = html.replace(
         "plaud-device-registry-ui.js?v=20260914-device-registry-easy1",
         "plaud-device-registry-ui.js?v=20260914-device-registry-easy2",
-    )
+    ):
+        html = html.replace(previous, "plaud-device-registry-ui.js?v=20260914-device-registry-easy3")
     markers = [
         '<script src="/meeting-openai-force.js?v=20260911-final-direct-link"></script>',
         '<script src="/admin-only-plaud-device-menu.js?v=20260911-admin-only1" defer></script>',
