@@ -2,6 +2,7 @@ from app import app, PUBLIC
 import portal_core as core
 import plaud_integration as plaud
 import plaud_device_registry as device_registry
+import android_device_registry as android_registry
 from flask import Response, redirect
 
 MEETING_OPENAI_URL = "https://medprk-medpark-meeting.mycafe24.ai/"
@@ -72,8 +73,12 @@ def meeting_openai_force_js():
     return response
 
 
-# Real PLAUD Device Registry APIs.
-device_registry.install(app)
+# Real device registry APIs. Guards prevent duplicate route registration if app.py
+# also installs these modules in a future runtime entrypoint.
+if "plaud_devices_list" not in app.view_functions:
+    device_registry.install(app)
+if "android_devices_list" not in app.view_functions:
+    android_registry.install(app)
 
 _original_plaud_user_id = plaud._plaud_user_id
 
@@ -88,10 +93,14 @@ plaud._plaud_user_id = _registry_aware_plaud_user_id
 
 def _patched_index():
     html = (PUBLIC / "index.html").read_text(encoding="utf-8")
-    # Force a fresh fetch of the stabilized registry UI while keeping a single load source.
+    # Force a fresh fetch of the current registry UI while keeping a single load source.
     html = html.replace(
         "plaud-device-registry-ui.js?v=20260911-device-registry2",
+        "plaud-device-registry-ui.js?v=20260914-device-registry-easy1",
+    )
+    html = html.replace(
         "plaud-device-registry-ui.js?v=20260911-device-registry-stable1",
+        "plaud-device-registry-ui.js?v=20260914-device-registry-easy1",
     )
     markers = [
         '<script src="/meeting-openai-force.js?v=20260911-final-direct-link"></script>',
