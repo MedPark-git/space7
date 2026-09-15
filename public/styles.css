@@ -282,19 +282,19 @@ a { color: inherit; text-decoration: none; }
 .schedule-item .schedule-item-description { display: -webkit-box; overflow: hidden; margin-top: 7px; color: #63716d; line-height: 1.55; white-space: pre-wrap; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .schedule-item .schedule-item-action { display: block; margin-top: 8px; color: var(--green-700); font-weight: 800; }
 
-/* Dashboard calendar readability: keep the existing panel and grid dimensions. */
-.dashboard-page .main-calendar-view .calendar-top b {
+/* Portal calendars: share readable text without changing panel or grid dimensions. */
+:is(.dashboard-page, .calendar-page) .main-calendar-view .calendar-top b {
   font-size: 18px;
   line-height: 24px;
   color: #183c32;
 }
-.dashboard-page .main-calendar-view .calendar-grid .day-head {
+:is(.dashboard-page, .calendar-page) .main-calendar-view .calendar-grid .day-head {
   font-size: 12px;
   line-height: 13px;
   font-weight: 700;
   color: #53675f;
 }
-.dashboard-page .main-calendar-view .calendar-date {
+:is(.dashboard-page, .calendar-page) .main-calendar-view .calendar-date {
   container: dashboard-date / size;
   display: flex;
   flex-direction: column;
@@ -304,7 +304,7 @@ a { color: inherit; text-decoration: none; }
   line-height: 18px;
   font-weight: 650;
 }
-.dashboard-page .main-calendar-view .event-dot {
+:is(.dashboard-page, .calendar-page) .main-calendar-view .event-dot {
   flex: 0 0 auto;
   margin-top: 2px;
   padding: 1px 4px;
@@ -312,7 +312,7 @@ a { color: inherit; text-decoration: none; }
   line-height: 16px;
   font-weight: 600;
 }
-.dashboard-page .main-calendar-view .more-events {
+:is(.dashboard-page, .calendar-page) .main-calendar-view .more-events {
   position: absolute;
   top: 5px;
   right: 5px;
@@ -321,7 +321,7 @@ a { color: inherit; text-decoration: none; }
   line-height: 16px;
 }
 @container dashboard-date (min-height: 90px) {
-  .dashboard-page .main-calendar-view .event-dot {
+  :is(.dashboard-page, .calendar-page) .main-calendar-view .event-dot {
     display: -webkit-box;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -329,28 +329,28 @@ a { color: inherit; text-decoration: none; }
     -webkit-line-clamp: 2;
   }
 }
-.dashboard-page .main-calendar-view .schedule-list h3 {
+:is(.dashboard-page, .calendar-page) .main-calendar-view .schedule-list h3 {
   font-size: 14px;
   line-height: 1.45;
 }
-.dashboard-page .main-calendar-view .schedule-list h3 small {
+:is(.dashboard-page, .calendar-page) .main-calendar-view .schedule-list h3 small {
   font-size: 11px;
 }
-.dashboard-page .main-calendar-view .schedule-item time {
+:is(.dashboard-page, .calendar-page) .main-calendar-view .schedule-item time {
   font-size: 12px;
   line-height: 1.4;
 }
-.dashboard-page .main-calendar-view .schedule-item b {
+:is(.dashboard-page, .calendar-page) .main-calendar-view .schedule-item b {
   font-size: 14px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.dashboard-page .main-calendar-view .schedule-item span {
+:is(.dashboard-page, .calendar-page) .main-calendar-view .schedule-item span {
   font-size: 12px;
   line-height: 1.5;
   color: #566b62;
 }
-.dashboard-page .main-calendar-view .schedule-item .schedule-item-action {
+:is(.dashboard-page, .calendar-page) .main-calendar-view .schedule-item .schedule-item-action {
   color: var(--green-700);
 }
 
@@ -1030,3 +1030,4 @@ a { color: inherit; text-decoration: none; }
   .calendar-event-detail-meta { grid-template-columns: 1fr; }
   .calendar-event-detail-meta article.wide { grid-column: auto; }
 }
+
