@@ -1,0 +1,31 @@
+.sso-preparation { padding: 24px; color: #213247; }
+.sso-preparation .sso-heading, .sso-preparation .sso-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.sso-preparation h2 { margin: 0 0 8px; font-size: 21px; }
+.sso-preparation h3 { margin: 0; font-size: 17px; }
+.sso-preparation p { margin: 0; font-size: 14px; line-height: 1.65; }
+.sso-preparation .sso-heading p, .sso-preparation .sso-footnote { color: #526277; }
+.sso-preparation .sso-notice { padding: 18px 20px; margin: 22px 0; background: #eef5ff; border: 1px solid #bdcfea; border-radius: 12px; }
+.sso-preparation .sso-notice strong { display: block; margin-bottom: 6px; font-size: 16px; color: #163f75; }
+.sso-preparation .sso-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.sso-preparation .sso-summary > div { padding: 18px; border: 1px solid #dfe5ec; border-radius: 12px; background: #fff; }
+.sso-preparation .sso-summary span { display: block; font-size: 13px; color: #526277; }
+.sso-preparation .sso-summary strong { display: block; margin-top: 8px; font-size: 29px; }
+.sso-preparation .sso-summary small { margin-left: 5px; font-size: 13px; font-weight: 400; }
+.sso-preparation .sso-policy { display: grid; gap: 7px; margin: 20px 0 26px; }
+.sso-preparation .sso-policy strong { margin-right: 10px; }
+.sso-preparation .sso-table-wrap { overflow-x: auto; margin-top: 16px; border: 1px solid #e1e6ed; border-radius: 10px; }
+.sso-preparation .sso-table { width: 100%; min-width: 780px; margin: 0; }
+.sso-preparation .sso-table th, .sso-preparation .sso-table td { padding: 14px 16px; vertical-align: top; font-size: 13px; white-space: normal; }
+.sso-preparation .sso-table td > small { display: block; margin-top: 5px; color: #5a687b; font-size: 12px; }
+.sso-preparation .sso-site-url { overflow-wrap: anywhere; max-width: 340px; }
+.sso-preparation .sso-badge { display: inline-block; padding: 4px 9px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.sso-preparation .sso-badge.prepared { background: #edf4ff; color: #24548c; }
+.sso-preparation .sso-badge.reserved { background: #f0f2f5; color: #566175; }
+.sso-preparation details { margin-top: 10px; min-width: 150px; }
+.sso-preparation summary { cursor: pointer; color: #4d5e75; }
+.sso-preparation details ul { margin: 10px 0 0; padding-left: 18px; line-height: 1.7; max-width: 320px; }
+.sso-preparation .sso-download { color: #1c518d; text-decoration: underline; white-space: nowrap; }
+.sso-preparation .sso-muted { color: #697589; }
+.sso-preparation .sso-footnote { margin-top: 15px; font-size: 13px; }
+.sso-preparation .sso-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 800px) { .sso-preparation { padding: 16px; } .sso-preparation .sso-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

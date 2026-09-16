@@ -1,3 +1,5 @@
+import { renderSSOPreparation } from "./sso-settings.js?v=20260916-sso-preparation1";
+
 const menuGroups = [
   { id: "workspace", label: "WORKSPACE", items: [
     { id: "dashboard", icon: "▦", title: "통합 대시보드" }
@@ -1194,7 +1196,7 @@ const renderDashboard = () => {
 const renderAdmin = () => {
   pageContent.innerHTML = `
     <section class="page-heading"><div><span class="eyebrow">ADMINISTRATION</span><h1>포털 관리</h1><p>임직원 신청 승인, 계정, 메뉴와 접근 권한을 관리합니다.</p></div><button id="addEmployee" class="button primary">＋ 관리자 직접 등록</button></section>
-    <section class="content-panel"><div class="admin-tabs"><button class="active" data-admin-tab="employees">임직원 관리</button><button data-admin-tab="menus">메뉴 관리</button><button data-admin-tab="permissions">권한 관리</button><button data-admin-tab="audits">감사 로그</button></div><div id="adminBody"></div></section>`;
+    <section class="content-panel"><div class="admin-tabs"><button class="active" data-admin-tab="employees">임직원 관리</button><button data-admin-tab="menus">메뉴 관리</button><button data-admin-tab="permissions">권한 관리</button><button data-admin-tab="sso">SSO 설정</button><button data-admin-tab="audits">감사 로그</button></div><div id="adminBody"></div></section>`;
   renderAdminTab("employees");
   $$('.admin-tabs [data-admin-tab]').forEach((button) => button.addEventListener("click", () => {
     $$('.admin-tabs [data-admin-tab]').forEach((tab) => tab.classList.toggle("active", tab === button));
@@ -1272,6 +1274,10 @@ const renderAdminTab = (tab) => {
     return;
   }
   addButton.hidden = true;
+  if (tab === "sso") {
+    renderSSOPreparation(body);
+    return;
+  }
   if (tab === "menus") {
     body.innerHTML = `
       <div class="menu-admin-layout">
