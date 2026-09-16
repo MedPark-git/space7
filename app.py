@@ -11,6 +11,7 @@ import plaud_device_integration as plaud_device
 import plaud_device_registry as plaud_registry
 import plaud_integration as plaud
 import portal_core as core
+import sso_preparation
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
@@ -415,6 +416,9 @@ if "plaud_devices_list" not in portal.view_functions:
     plaud_registry.install(portal)
 if "android_devices_list" not in portal.view_functions:
     android_registry.install(portal)
+
+
+sso_preparation.install(portal, current_user)
 
 
 @portal.get("/")
