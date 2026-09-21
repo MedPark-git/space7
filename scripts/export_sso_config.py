@@ -1,15 +1,15 @@
-"""Validate/export the inactive preparation bundle without running the portal."""
+"""Validate or export the SSO master registration bundle."""
 import argparse
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from sso_preparation import client_profile, configuration_bundle, load_manifest, overview
+from sso_preparation import OAuthError, client_profile, configuration_bundle, load_manifest, overview
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Validate and export MedPark SSO preparation")
+    parser = argparse.ArgumentParser(description="Validate and export MedPark One SSO master configuration")
     parser.add_argument("--client", help="Registered client ID, e.g. medpark-space-06")
     parser.add_argument("--check", action="store_true", help="Only show inventory validation counts")
     parser.add_argument("--output", type=Path, help="Destination JSON file; defaults to stdout")
@@ -22,7 +22,7 @@ def main():
             args.output.write_text(output, encoding="utf-8")
         else:
             print(output, end="")
-    except (ValueError, KeyError, OSError) as exc:
+    except (ValueError, KeyError, OSError, RuntimeError, OAuthError) as exc:
         parser.error(str(exc))
 
 
