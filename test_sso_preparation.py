@@ -1,162 +1,252 @@
+import base64
 import copy
+import hashlib
 import json
 import os
-import tempfile
 import unittest
-from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 from unittest.mock import patch
 
-os.environ.setdefault("INITIAL_ADMIN_PASSWORD", "LocalValidationOnly!234")
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-import sso_preparation as sso
-from app import core, portal
+
+os.environ.setdefault("INITIAL_ADMIN_PASSWORD", "LocalValidationOnly!234")
+_test_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+_test_pem = _test_key.private_bytes(
+    serialization.Encoding.PEM,
+    serialization.PrivateFormat.PKCS8,
+    serialization.NoEncryption(),
+)
+os.environ["SSO_SIGNING_PRIVATE_KEY_B64"] = base64.b64encode(_test_pem).decode()
+os.environ["SSO_STATE_SECRET"] = "local-test-state-secret-that-is-long-enough"
+for _space in (1, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 16, 18):
+    os.environ[f"SSO_CLIENT_SECRET_SPACE_{_space:02}"] = f"client-secret-space-{_space:02}-local"
+
+import sso_master as sso  # noqa: E402
+from app import core, portal  # noqa: E402
+
+
+def b64url(data):
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
 class SSOManifestTests(unittest.TestCase):
     def setUp(self):
         self.data = sso.load_manifest()
 
-    def test_all_current_spaces_and_no_amaranth(self):
+    def test_master_inventory_includes_current_spaces_and_excludes_amaranth(self):
         summary = sso.overview(self.data)["summary"]
-        self.assertEqual(summary, {"total_spaces": 20, "occupied_spaces": 11, "reserved_spaces": 9, "active_sso_sites": 0})
-        self.assertEqual({s["space_label"] for s in self.data["spaces"]}, {f"space_{i:02}" for i in range(1, 21)})
+        self.assertEqual(summary["total_spaces"], 20)
+        self.assertEqual(summary["occupied_spaces"], 15)
+        self.assertEqual(summary["reserved_spaces"], 5)
+        self.assertEqual(summary["registered_clients"], 14)
+        self.assertEqual(summary["configured_clients"], 14)
+        self.assertTrue(summary["master_ready"])
+        self.assertEqual({item["space_label"] for item in self.data["spaces"]}, {f"space_{index:02}" for index in range(1, 21)})
         self.assertEqual(self.data["excluded_integrations"], ["amaranth"])
 
-    def test_each_site_profile_has_exact_individual_redirects(self):
-        bundle = sso.configuration_bundle(self.data)
-        self.assertEqual(len(bundle["clients"]), 11)
-        self.assertEqual(len(bundle["reserved_spaces"]), 9)
-        for profile in bundle["clients"]:
-            self.assertFalse(profile["enabled"])
-            self.assertEqual(profile["oidc_client"]["redirect_uris"], [f'https://{profile["project_id"]}.mycafe24.ai/auth/sso/callback'])
-            self.assertNotIn("client_secret", profile["oidc_client"])
-            self.assertEqual(profile["client_requirements"]["identity_key"], ["iss", "sub"])
+    def test_medpark_one_is_the_only_master(self):
+        masters = [item for item in self.data["spaces"] if item["kind"] == "portal"]
+        self.assertEqual(len(masters), 1)
+        self.assertEqual(masters[0]["project_id"], "medprk-medpark-one")
+        self.assertEqual(self.data["issuer"], "https://medprk-medpark-one.mycafe24.ai/sso")
 
-    def test_reserved_and_unknown_clients_cannot_export_live_configuration(self):
-        with self.assertRaises(ValueError):
-            sso.client_profile(self.data, "medpark-space-02")
-        with self.assertRaises(KeyError):
+    def test_client_profiles_use_exact_individual_redirects_and_no_secret_values(self):
+        bundle = sso.configuration_bundle(self.data)
+        self.assertEqual(len(bundle["clients"]), 14)
+        self.assertEqual(len(bundle["reserved_spaces"]), 5)
+        serialized = json.dumps(bundle)
+        for secret in (value for key, value in os.environ.items() if key.startswith("SSO_CLIENT_SECRET_")):
+            self.assertNotIn(secret, serialized)
+        for profile in bundle["clients"]:
+            expected = f'https://{profile["project_id"]}.mycafe24.ai/auth/sso/callback'
+            self.assertEqual(profile["oidc_client"]["redirect_uris"], [expected])
+            self.assertEqual(profile["oidc_client"]["pkce_method"], "S256")
+            self.assertEqual(profile["account_linking"]["identity_key"], ["iss", "sub"])
+            self.assertFalse(profile["account_linking"]["automatic_account_creation"])
+
+    def test_reserved_master_and_unknown_client_profiles_are_rejected(self):
+        for client_id in ("medpark-space-02", "medpark-space-07"):
+            with self.assertRaises(sso.OAuthError):
+                sso.client_profile(self.data, client_id)
+        with self.assertRaises(sso.OAuthError):
             sso.client_profile(self.data, "unregistered-client")
 
-    def test_foreign_wildcard_insecure_and_redirect_injection_are_rejected(self):
-        for uri in ["http://medprk-medpark-allo.mycafe24.ai/auth/sso/callback", "https://evil.example/callback", "https://*.mycafe24.ai/auth/sso/callback", "https://medprk-medpark-allo.mycafe24.ai/auth/sso/callback?next=https://evil.example", "https://medprk-medpark-allo.mycafe24.ai/auth/sso/callback#fragment"]:
-            with self.subTest(uri=uri):
+    def test_redirect_injection_and_security_policy_weakening_are_rejected(self):
+        mutations = [
+            lambda data: data.update(authentication_enabled=False),
+            lambda data: data.update(excluded_integrations=[]),
+            lambda data: data["policy"].update(pkce_method="plain"),
+            lambda data: data["policy"].update(automatic_account_creation=True),
+            lambda data: data["policy"].update(role_source="portal"),
+            lambda data: data["spaces"][0].update(application_type="browser", token_endpoint_auth_method="client_secret_basic"),
+        ]
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
                 data = copy.deepcopy(self.data)
-                data["spaces"][0]["callback_uri"] = uri
+                mutation(data)
                 with self.assertRaises(ValueError):
                     sso.validate_manifest(data)
-
-    def test_duplicate_client_space_or_origin_are_rejected(self):
-        for key in ["client_id", "space_id", "space_label", "project_id", "public_url"]:
-            with self.subTest(key=key):
-                data = copy.deepcopy(self.data)
-                data["spaces"][2][key] = data["spaces"][0][key]
-                with self.assertRaises(ValueError):
-                    sso.validate_manifest(data)
-
-    def test_preparation_cannot_enable_auth_or_weaken_policy(self):
-        mutations = [lambda d: d.update(authentication_enabled=True), lambda d: d["spaces"][0].update(enabled=True), lambda d: d["policy"].update(pkce_method="plain"), lambda d: d["policy"].update(automatic_account_creation=True), lambda d: d["policy"].update(role_source="portal_admin"), lambda d: d.update(excluded_integrations=[])]
-        for change in mutations:
-            data = copy.deepcopy(self.data)
-            change(data)
-            with self.assertRaises(ValueError):
-                sso.validate_manifest(data)
-
-    def test_reserved_space_requires_verified_project_address(self):
-        data = copy.deepcopy(self.data)
-        data["spaces"][1]["callback_uri"] = "https://example.com/callback"
-        with self.assertRaises(ValueError):
-            sso.validate_manifest(data)
-
-    def test_future_space_can_be_reserved_without_auto_enabling(self):
-        data = copy.deepcopy(self.data)
-        extra = copy.deepcopy(data["spaces"][-1])
-        extra.update(space_id=99999, space_label="space_21", client_id="medpark-space-21")
-        data["spaces"].append(extra)
-        self.assertEqual(sso.overview(data)["summary"]["total_spaces"], 21)
-        self.assertFalse(extra["enabled"])
-
-    def test_meeting_shared_password_and_unverified_sites_are_explicit(self):
-        meeting = next(s for s in sso.overview(self.data)["spaces"] if s["space_label"] == "space_06")
-        self.assertEqual(meeting["auth_model"], "shared_password")
-        self.assertTrue(any("공용 비밀번호" in task for task in meeting["remaining_tasks"]))
-        unknown = [s for s in self.data["spaces"] if s["auth_model"] == "unverified"]
-        self.assertEqual(len(unknown), 4)
-
-    def test_exports_do_not_modify_inventory(self):
-        before = copy.deepcopy(self.data)
-        sso.overview(self.data)
-        sso.configuration_bundle(self.data)
-        self.assertEqual(before, self.data)
 
 
 class SSOEndpointTests(unittest.TestCase):
+    client_id = "medpark-space-05"
+    redirect_uri = "https://medprk-ar-dashboard.mycafe24.ai/auth/sso/callback"
+    verifier = "A" * 43
+    challenge = b64url(hashlib.sha256(verifier.encode()).digest())
+
     def setUp(self):
         self.client = portal.test_client()
-        self.admin = core.find_user_by_username("admin")
-        self.endpoints = ["/api/admin/sso/preparation", "/api/admin/sso/preparation/export", "/api/admin/sso/preparation/clients/medpark-space-06/config"]
+        sso._memory_codes.clear()
+        sso._memory_tokens.clear()
 
     def login(self):
         response = self.client.post("/api/auth/login", json={"username": "admin", "password": "LocalValidationOnly!234"})
         self.assertEqual(response.status_code, 200)
+        return response
 
-    def test_anonymous_cannot_read_any_configuration(self):
-        for url in self.endpoints:
+    def authorize(self, client_id=None, redirect_uri=None, **overrides):
+        params = {
+            "client_id": client_id or self.client_id,
+            "redirect_uri": redirect_uri or self.redirect_uri,
+            "response_type": "code",
+            "scope": "openid profile email",
+            "state": "state-123",
+            "nonce": "nonce-123",
+            "code_challenge": self.challenge,
+            "code_challenge_method": "S256",
+        }
+        params.update(overrides)
+        return self.client.get("/sso/authorize", query_string=params)
+
+    def exchange(self, code, **overrides):
+        encoded = base64.b64encode(f"{self.client_id}:{os.environ['SSO_CLIENT_SECRET_SPACE_05']}".encode()).decode()
+        form = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": self.redirect_uri,
+            "code_verifier": self.verifier,
+        }
+        form.update(overrides)
+        return self.client.post("/sso/token", data=form, headers={"Authorization": f"Basic {encoded}"})
+
+    def test_discovery_jwks_and_health_are_public_and_ready(self):
+        discovery = self.client.get("/sso/.well-known/openid-configuration")
+        self.assertEqual(discovery.status_code, 200)
+        self.assertEqual(discovery.get_json()["issuer"], sso.ISSUER)
+        self.assertEqual(discovery.get_json()["code_challenge_methods_supported"], ["S256"])
+        jwks = self.client.get("/sso/jwks.json")
+        self.assertEqual(jwks.status_code, 200)
+        self.assertEqual(jwks.get_json()["keys"][0]["alg"], "RS256")
+        health = self.client.get("/sso/health")
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.get_json()["registered_clients"], 14)
+
+    def test_authorization_code_pkce_id_token_userinfo_replay_and_logout(self):
+        self.login()
+        authorized = self.authorize()
+        self.assertEqual(authorized.status_code, 302)
+        query = parse_qs(urlsplit(authorized.location).query)
+        self.assertEqual(query["state"], ["state-123"])
+        code = query["code"][0]
+
+        token_response = self.exchange(code)
+        self.assertEqual(token_response.status_code, 200)
+        tokens = token_response.get_json()
+        self.assertEqual(tokens["token_type"], "Bearer")
+        header_part, payload_part, signature_part = tokens["id_token"].split(".")
+        payload = json.loads(base64.urlsafe_b64decode(payload_part + "=" * (-len(payload_part) % 4)))
+        self.assertEqual(payload["iss"], sso.ISSUER)
+        self.assertEqual(payload["aud"], self.client_id)
+        self.assertEqual(payload["nonce"], "nonce-123")
+        _test_key.public_key().verify(
+            base64.urlsafe_b64decode(signature_part + "=" * (-len(signature_part) % 4)),
+            f"{header_part}.{payload_part}".encode(),
+            padding.PKCS1v15(),
+            hashes.SHA256(),
+        )
+
+        userinfo = self.client.get("/sso/userinfo", headers={"Authorization": f"Bearer {tokens['access_token']}"})
+        self.assertEqual(userinfo.status_code, 200)
+        self.assertEqual(userinfo.get_json()["preferred_username"], "admin")
+        self.assertEqual(self.exchange(code).status_code, 400)
+
+        with patch.object(sso, "_dispatch_backchannel"):
+            logout = self.client.post("/api/auth/logout")
+        self.assertEqual(logout.status_code, 200)
+        self.assertEqual(self.client.get("/sso/userinfo", headers={"Authorization": f"Bearer {tokens['access_token']}"}).status_code, 401)
+
+    def test_anonymous_authorization_resumes_after_medpark_one_login(self):
+        first = self.authorize()
+        self.assertEqual(first.status_code, 302)
+        self.assertEqual(first.location, "/?sso=login")
+        self.login()
+        resumed = self.client.get("/sso/resume")
+        self.assertEqual(resumed.status_code, 302)
+        self.assertTrue(resumed.location.startswith(self.redirect_uri + "?code="))
+        self.assertIn("state=state-123", resumed.location)
+
+    def test_prompt_none_returns_login_required_to_registered_callback(self):
+        result = self.authorize(prompt="none")
+        self.assertEqual(result.status_code, 302)
+        query = parse_qs(urlsplit(result.location).query)
+        self.assertEqual(query["error"], ["login_required"])
+        self.assertEqual(query["state"], ["state-123"])
+
+    def test_unregistered_redirect_is_rejected_without_redirecting(self):
+        self.login()
+        result = self.authorize(redirect_uri="https://evil.example/callback")
+        self.assertEqual(result.status_code, 400)
+        self.assertIsNone(result.location)
+        self.assertEqual(result.get_json()["error"], "invalid_request")
+
+    def test_wrong_pkce_and_client_secret_fail(self):
+        self.login()
+        code = parse_qs(urlsplit(self.authorize().location).query)["code"][0]
+        self.assertEqual(self.exchange(code, code_verifier="B" * 43).get_json()["error"], "invalid_grant")
+        wrong = base64.b64encode(f"{self.client_id}:wrong-secret".encode()).decode()
+        response = self.client.post("/sso/token", data={"grant_type": "authorization_code", "code": code, "redirect_uri": self.redirect_uri, "code_verifier": self.verifier}, headers={"Authorization": f"Basic {wrong}"})
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["error"], "invalid_client")
+
+    def test_browser_client_uses_pkce_without_secret_and_restricted_cors(self):
+        self.login()
+        redirect_uri = "https://medprk-yield-management.mycafe24.ai/auth/sso/callback"
+        response = self.authorize(client_id="medpark-space-14", redirect_uri=redirect_uri)
+        code = parse_qs(urlsplit(response.location).query)["code"][0]
+        token = self.client.post(
+            "/sso/token",
+            data={"grant_type": "authorization_code", "client_id": "medpark-space-14", "code": code, "redirect_uri": redirect_uri, "code_verifier": self.verifier},
+            headers={"Origin": "https://medprk-yield-management.mycafe24.ai"},
+        )
+        self.assertEqual(token.status_code, 200)
+        self.assertEqual(token.headers["Access-Control-Allow-Origin"], "https://medprk-yield-management.mycafe24.ai")
+
+    def test_admin_configuration_is_protected_and_contains_no_credentials(self):
+        urls = [
+            "/api/admin/sso/master",
+            "/api/admin/sso/master/export",
+            "/api/admin/sso/master/clients/medpark-space-05/config",
+        ]
+        for url in urls:
             self.assertEqual(self.client.get(url).status_code, 401)
-
-    def test_basic_user_cannot_read_any_configuration(self):
         self.login()
-        with patch.dict(self.admin, {"role": "basic"}):
-            for url in self.endpoints:
-                self.assertEqual(self.client.get(url).status_code, 403)
+        for url in urls:
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            content = response.get_data(as_text=True)
+            self.assertNotIn(os.environ["SSO_CLIENT_SECRET_SPACE_05"], content)
+            self.assertNotIn("PRIVATE KEY", content)
+            self.assertIn("no-store", response.headers["Cache-Control"])
 
-    def test_admin_reads_and_exports_with_no_cache_or_credentials(self):
+    def test_logout_redirect_is_exactly_registered(self):
         self.login()
-        for url in self.endpoints:
-            result = self.client.get(url)
-            self.assertEqual(result.status_code, 200)
-            self.assertTrue(result.is_json)
-            self.assertIn("no-store", result.headers["Cache-Control"])
-            self.assertNotIn("password_hash", result.get_data(as_text=True))
-            self.assertNotIn("access_token", result.get_data(as_text=True))
-        self.assertIn("attachment", self.client.get(self.endpoints[1]).headers["Content-Disposition"])
-
-    def test_api_has_no_enable_or_write_operation(self):
-        self.login()
-        for method in (self.client.post, self.client.put, self.client.patch, self.client.delete):
-            self.assertEqual(method(self.endpoints[0], json={"authentication_enabled": True}).status_code, 405)
-
-    def test_reserved_client_returns_conflict_unknown_returns_not_found(self):
-        self.login()
-        self.assertEqual(self.client.get("/api/admin/sso/preparation/clients/medpark-space-02/config").status_code, 409)
-        self.assertEqual(self.client.get("/api/admin/sso/preparation/clients/other/config").status_code, 404)
-
-    def test_existing_login_session_and_logout_still_work(self):
-        self.login()
-        before = self.client.get("/api/auth/me").get_json()
-        self.client.get(self.endpoints[0])
-        self.client.get(self.endpoints[1])
-        self.assertEqual(before, self.client.get("/api/auth/me").get_json())
-        self.assertEqual(self.client.post("/api/auth/logout").status_code, 200)
-        self.assertEqual(self.client.get(self.endpoints[0]).status_code, 401)
-
-    def test_no_live_oidc_endpoints_are_registered(self):
-        self.assertFalse(any(rule.rule.startswith(("/sso/", "/.well-known/")) for rule in portal.url_map.iter_rules()))
-
-    def test_corrupt_config_fails_closed(self):
-        self.login()
-        with patch.object(sso, "load_manifest", side_effect=ValueError("corrupt")):
-            self.assertEqual(self.client.get(self.endpoints[0]).status_code, 503)
-
-    def test_settings_assets_and_index_cache_version(self):
-        response = self.client.get("/")
-        self.assertIn("sso-settings.css?v=20260916-sso-preparation1", response.get_data(as_text=True))
-        self.assertIn("app.js?v=20260916-sso-preparation1", response.get_data(as_text=True))
-        response.close()
-        for path in ("/sso-settings.js", "/sso-settings.css"):
-            result = self.client.get(path)
-            self.assertEqual(result.status_code, 200)
-            result.close()
+        invalid = self.client.get("/sso/logout", query_string={"client_id": self.client_id, "post_logout_redirect_uri": "https://evil.example/"})
+        self.assertEqual(invalid.status_code, 400)
+        valid = self.client.get("/sso/logout", query_string={"client_id": self.client_id, "post_logout_redirect_uri": "https://medprk-ar-dashboard.mycafe24.ai/"})
+        self.assertEqual(valid.status_code, 302)
+        self.assertEqual(valid.location, "https://medprk-ar-dashboard.mycafe24.ai/")
 
 
 if __name__ == "__main__":

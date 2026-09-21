@@ -11,7 +11,7 @@ import plaud_device_integration as plaud_device
 import plaud_device_registry as plaud_registry
 import plaud_integration as plaud
 import portal_core as core
-import sso_preparation
+import sso_master
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
@@ -29,6 +29,11 @@ def payload():
 
 def request_ip():
     return (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
+
+
+def secure_request():
+    forwarded = (request.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+    return request.is_secure or forwarded == "https"
 
 
 def calendar_redirect_uri():
@@ -97,7 +102,7 @@ def login():
     token = core.create_session(user["id"])
     core.write_audit(user["id"], "auth.login", "user", str(user["id"]), {}, request_ip())
     response = json_response({"user": core.public_user(user)})
-    response.set_cookie(core.SESSION_COOKIE, token, max_age=int(core.SESSION_TTL.total_seconds()), httponly=True, secure=request.is_secure, samesite="Strict", path="/")
+    response.set_cookie(core.SESSION_COOKIE, token, max_age=int(core.SESSION_TTL.total_seconds()), httponly=True, secure=secure_request(), samesite="Lax", path="/")
     return response
 
 
@@ -107,6 +112,7 @@ def logout():
     user = core.get_session_user(token)
     if user:
         core.write_audit(user["id"], "auth.logout", "user", str(user["id"]), {}, request_ip())
+    sso_master.revoke_portal_session(token)
     core.delete_session(token)
     response = json_response({"success": True})
     response.delete_cookie(core.SESSION_COOKIE, path="/")
@@ -418,7 +424,7 @@ if "android_devices_list" not in portal.view_functions:
     android_registry.install(portal)
 
 
-sso_preparation.install(portal, current_user)
+sso_master.install(portal, current_user, current_user)
 
 
 @portal.get("/")

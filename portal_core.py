@@ -209,6 +209,37 @@ CREATE TABLE IF NOT EXISTS portal_sessions (
   token_hash char(64) PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   expires_at timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS sso_authorization_codes (
+  code_hash char(64) PRIMARY KEY,
+  client_id varchar(80) NOT NULL,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_key char(64) NOT NULL,
+  redirect_uri text NOT NULL,
+  scope text NOT NULL,
+  nonce varchar(512) NOT NULL,
+  code_challenge char(43) NOT NULL,
+  auth_time timestamptz NOT NULL,
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_sso_authorization_codes_expires_at
+  ON sso_authorization_codes (expires_at);
+CREATE TABLE IF NOT EXISTS sso_access_tokens (
+  token_hash char(64) PRIMARY KEY,
+  client_id varchar(80) NOT NULL,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_key char(64) NOT NULL,
+  sid varchar(100) NOT NULL,
+  scope text NOT NULL,
+  expires_at timestamptz NOT NULL,
+  revoked_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_sso_access_tokens_session_key
+  ON sso_access_tokens (session_key) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_sso_access_tokens_expires_at
+  ON sso_access_tokens (expires_at);
 CREATE TABLE IF NOT EXISTS audit_logs (
   id bigserial PRIMARY KEY, actor_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   action varchar(100) NOT NULL, target_type varchar(100), target_id varchar(255),
@@ -342,9 +373,13 @@ def _database_admin_is_ready():
         with connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SET LOCAL statement_timeout = '3000ms'")
-                cur.execute("SELECT to_regclass('public.users'), to_regclass('public.plaud_meetings'), to_regclass('public.plaud_device_meetings')")
-                users_table, plaud_table, device_table = cur.fetchone()
-                if users_table is None or plaud_table is None or device_table is None:
+                cur.execute("""SELECT to_regclass('public.users'),
+                                      to_regclass('public.plaud_meetings'),
+                                      to_regclass('public.plaud_device_meetings'),
+                                      to_regclass('public.sso_authorization_codes'),
+                                      to_regclass('public.sso_access_tokens')""")
+                users_table, plaud_table, device_table, sso_codes_table, sso_tokens_table = cur.fetchone()
+                if any(table is None for table in (users_table, plaud_table, device_table, sso_codes_table, sso_tokens_table)):
                     return False
                 cur.execute(
                     """SELECT column_name FROM information_schema.columns
