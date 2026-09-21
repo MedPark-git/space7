@@ -72,6 +72,7 @@ const AUDIT_ACTION_LABELS = Object.freeze({
   "auth.login": "로그인",
   "auth.login_failed": "로그인 실패",
   "auth.logout": "로그아웃",
+  "auth.password_changed": "본인 비밀번호 변경",
   "user.registration.request": "임직원 등록 신청",
   "user.approve": "임직원 계정 승인",
   "user.create": "임직원 계정 등록",
@@ -852,9 +853,10 @@ const navigate = (page) => {
   pageContent.classList.toggle("calendar-page", ["calendar", "admin_calendar"].includes(page));
   renderNavigation();
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.nav === page));
-  const title = menuGroups.flatMap((group) => group.items.flatMap((item) => [item, ...(item.children || [])])).find((item) => item.id === page)?.title || "통합 대시보드";
+  const title = page === "profile" ? "내 계정" : menuGroups.flatMap((group) => group.items.flatMap((item) => [item, ...(item.children || [])])).find((item) => item.id === page)?.title || "통합 대시보드";
   $("#breadcrumbText").textContent = title;
   if (page === "dashboard") renderDashboard();
+  else if (page === "profile") renderProfile();
   else if (page === "admin") renderAdmin();
   else if (page === "admin_calendar") renderCalendarSettings();
   else if (page === "calendar") renderCalendarPage();
@@ -1197,6 +1199,70 @@ const renderDashboard = () => {
   startCarousel();
 };
 
+const renderProfile = () => {
+  const roleLabel = currentUser?.role === "admin" ? "관리자" : "임직원";
+  pageContent.innerHTML = `
+    <section class="page-heading"><div><span class="eyebrow">MY ACCOUNT</span><h1>내 계정 · 보안 설정</h1><p>본인 계정 정보를 확인하고 로그인 비밀번호를 안전하게 변경합니다.</p></div></section>
+    <section class="account-settings-layout">
+      <article class="account-profile-card">
+        <span class="account-profile-avatar">${escapeHtml((currentUser?.name || "M").slice(0, 1))}</span>
+        <div><span class="eyebrow">EMPLOYEE PROFILE</span><h2>${escapeHtml(currentUser?.name || "임직원")}</h2><p>${escapeHtml(currentUser?.department || "소속 미지정")} · ${roleLabel}</p></div>
+        <dl><div><dt>계정 ID</dt><dd>${escapeHtml(currentUser?.username || "-")}</dd></div><div><dt>사번</dt><dd>${escapeHtml(currentUser?.employee_no || "미등록")}</dd></div><div><dt>이메일</dt><dd>${escapeHtml(currentUser?.email || "미등록")}</dd></div></dl>
+      </article>
+      <form id="selfPasswordForm" class="account-password-card">
+        <header><div><span class="eyebrow">SECURITY</span><h2>비밀번호 변경</h2><p>현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다.</p></div><span class="security-state"><i></i> 본인 확인</span></header>
+        <label>현재 비밀번호<span class="password-wrap"><input name="current_password" type="password" maxlength="128" autocomplete="current-password" required /><button type="button" data-password-toggle="current_password">보기</button></span></label>
+        <div class="account-password-grid">
+          <label>새 비밀번호<span class="password-wrap"><input name="new_password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required /><button type="button" data-password-toggle="new_password">보기</button></span></label>
+          <label>새 비밀번호 확인<span class="password-wrap"><input name="new_password_confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required /><button type="button" data-password-toggle="new_password_confirm">보기</button></span></label>
+        </div>
+        <p class="account-password-hint">8~128자로 입력해 주세요. 변경하면 현재 화면을 제외한 다른 기기의 로그인과 연결된 SSO 세션이 종료됩니다.</p>
+        <p id="selfPasswordError" class="form-error"></p>
+        <footer><button type="submit" class="button primary">내 비밀번호 변경</button></footer>
+      </form>
+    </section>`;
+
+  $$('[data-password-toggle]').forEach((button) => button.addEventListener("click", () => {
+    const input = $("#selfPasswordForm").elements[button.dataset.passwordToggle];
+    input.type = input.type === "password" ? "text" : "password";
+    button.textContent = input.type === "password" ? "보기" : "숨김";
+  }));
+  $("#selfPasswordForm").addEventListener("submit", changeOwnPassword);
+};
+
+const changeOwnPassword = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submit = form.querySelector('[type="submit"]');
+  const data = Object.fromEntries(new FormData(form));
+  const errorTarget = $("#selfPasswordError");
+  errorTarget.textContent = "";
+  if (data.new_password !== data.new_password_confirm) {
+    errorTarget.textContent = "새 비밀번호 확인이 일치하지 않습니다.";
+    return;
+  }
+  if (data.current_password === data.new_password) {
+    errorTarget.textContent = "현재 비밀번호와 다른 새 비밀번호를 입력해 주세요.";
+    return;
+  }
+  submit.disabled = true;
+  try {
+    const response = await fetch("/api/auth/password", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    form.reset();
+    showToast("비밀번호가 변경되었고 다른 로그인 세션이 종료되었습니다.");
+  } catch (error) {
+    errorTarget.textContent = error.message || "비밀번호 변경에 실패했습니다.";
+  } finally {
+    submit.disabled = false;
+  }
+};
+
 const renderAdmin = () => {
   pageContent.innerHTML = `
     <section class="page-heading"><div><span class="eyebrow">ADMINISTRATION</span><h1>포털 관리</h1><p>임직원 신청 승인, 계정, 메뉴와 접근 권한을 관리합니다.</p></div><button id="addEmployee" class="button primary">＋ 관리자 직접 등록</button></section>
@@ -1267,13 +1333,14 @@ const renderAdminTab = (tab) => {
   if (tab === "employees") {
     addButton.hidden = false;
     body.innerHTML = `
-      <div class="employee-admin-summary"><div class="toolbar"><input id="employeeSearch" placeholder="계정 ID, 이름, 사번, 부서 검색" /><span class="live-status"><i></i> 활성 임직원 <b id="activeCount">-</b>명</span></div><span class="pending-status">승인 대기 <b id="pendingCount">-</b>명</span></div>
+      <div class="employee-admin-summary"><div class="toolbar"><input id="employeeSearch" placeholder="계정 ID, 이름, 사번, 부서 검색" /><span class="live-status"><i></i> 활성 임직원 <b id="activeCount">-</b>명</span></div><div class="employee-summary-actions"><span class="pending-status">승인 대기 <b id="pendingCount">-</b>명</span><button id="openSelfPassword" type="button" class="button secondary">내 비밀번호 변경</button></div></div>
       <table class="data-table"><thead><tr><th>계정 ID</th><th>성명</th><th>사번</th><th>소속</th><th>권한</th><th>상태</th><th>관리</th></tr></thead><tbody id="employeeRows"><tr><td colspan="7">계정 정보를 불러오는 중입니다.</td></tr></tbody></table>`;
     loadEmployees();
     $("#employeeSearch").addEventListener("input", (event) => {
       const q = event.target.value.toLowerCase();
       renderEmployees(employeeCache.filter((user) => Object.values(user).join(" ").toLowerCase().includes(q)));
     });
+    $("#openSelfPassword").addEventListener("click", () => navigate("profile"));
     addButton.onclick = openCreateEmployee;
     return;
   }
@@ -1518,10 +1585,11 @@ const renderEmployees = (rows) => {
   $("#employeeRows").innerHTML = rows.map((user) => `<tr class="${user.status === "pending" ? "pending-user-row" : ""}">
     <td><b>${escapeHtml(user.username)}</b></td><td>${escapeHtml(user.name)}</td><td>${escapeHtml(user.employee_no || "-")}</td><td>${escapeHtml(user.department || "-")}</td>
     <td><span class="tag">${user.role === "admin" ? "관리자" : "기본(임직원)"}</span></td><td><span class="tag ${user.status === "pending" ? "pending" : user.status !== "active" ? "gray" : ""}">${statusLabel(user.status)}</span></td>
-    <td><div class="account-actions">${user.status === "pending" ? `<button class="approve" data-approve-user="${user.id}">신청 승인</button>` : ""}<button data-edit-user="${user.id}">정보 수정</button>${user.status !== "pending" ? `<button data-toggle-user="${user.id}" data-next-status="${user.status === "active" ? "terminated" : "active"}">${user.status === "active" ? "비활성화" : "재활성화"}</button><button data-reset-user="${user.id}">비밀번호 초기화</button>` : ""}<button class="danger" data-delete-user="${user.id}" data-delete-username="${escapeHtml(user.username)}">삭제</button></div></td>
+    <td><div class="account-actions">${user.status === "pending" ? `<button class="approve" data-approve-user="${user.id}">신청 승인</button>` : ""}<button data-edit-user="${user.id}">정보 수정</button>${user.status !== "pending" ? `<button data-toggle-user="${user.id}" data-next-status="${user.status === "active" ? "terminated" : "active"}">${user.status === "active" ? "비활성화" : "재활성화"}</button>${user.id === currentUser?.id ? `<button class="self-password" data-self-password>내 비밀번호 변경</button>` : `<button data-reset-user="${user.id}">비밀번호 초기화</button>`}` : ""}<button class="danger" data-delete-user="${user.id}" data-delete-username="${escapeHtml(user.username)}">삭제</button></div></td>
   </tr>`).join("") || '<tr><td colspan="7">등록된 계정이 없습니다.</td></tr>';
   $$('[data-approve-user]').forEach((button) => button.addEventListener("click", () => approveEmployee(button.dataset.approveUser)));
   $$('[data-edit-user]').forEach((button) => button.addEventListener("click", () => openEditEmployee(button.dataset.editUser)));
+  $$('[data-self-password]').forEach((button) => button.addEventListener("click", () => navigate("profile")));
   $$('[data-toggle-user]').forEach((button) => button.addEventListener("click", async () => {
     if (button.dataset.toggleUser === currentUser?.id && button.dataset.nextStatus === "terminated") return showToast("현재 로그인한 관리자 계정은 비활성화할 수 없습니다.");
     await updateEmployee(button.dataset.toggleUser, { status: button.dataset.nextStatus });
@@ -1604,6 +1672,8 @@ const deleteEmployee = async (id, username) => {
 };
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
+
+$(".profile").addEventListener("click", () => navigate("profile"));
 
 $$('[data-close-employee]').forEach((button) => button.addEventListener("click", () => employeeDialog.close()));
 $$('[data-close-quick-links]').forEach((button) => button.addEventListener("click", () => quickLinksDialog.close()));
