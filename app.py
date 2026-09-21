@@ -126,7 +126,6 @@ def me():
 
 @portal.post("/api/auth/password")
 def change_password():
-    session_token = request.cookies.get(core.SESSION_COOKIE)
     user = current_user()
     data = payload()
     updated_user = core.change_own_password(
@@ -136,7 +135,7 @@ def change_password():
         data.get("new_password_confirm"),
         request_ip(),
     )
-    sso_master.revoke_portal_session(session_token)
+    sso_master.revoke_user_sessions(user["id"])
     new_session_token = core.create_session(user["id"])
     response = json_response({"success": True, "user": updated_user, "other_sessions_revoked": True})
     response.set_cookie(
