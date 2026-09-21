@@ -72,7 +72,7 @@ class StaticAssetIntegrityTest(unittest.TestCase):
         self.assertIn("/approve", javascript)
         self.assertIn('method: "DELETE"', javascript)
         self.assertIn("관리자 직접 등록", javascript)
-        self.assertIn("20260904-registration1", html)
+        self.assertIn("20260921-sso-master1", html)
 
     def test_audit_log_admin_interface_is_connected(self):
         javascript = (PUBLIC_DIR / "app.js").read_text(encoding="utf-8")
