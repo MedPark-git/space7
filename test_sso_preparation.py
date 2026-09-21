@@ -177,6 +177,20 @@ class SSOEndpointTests(unittest.TestCase):
         self.assertEqual(logout.status_code, 200)
         self.assertEqual(self.client.get("/sso/userinfo", headers={"Authorization": f"Bearer {tokens['access_token']}"}).status_code, 401)
 
+    def test_user_wide_revocation_invalidates_tokens_and_pending_codes(self):
+        self.login()
+        user_id = self.client.get("/api/auth/me").get_json()["user"]["id"]
+        exchanged_code = parse_qs(urlsplit(self.authorize().location).query)["code"][0]
+        tokens = self.exchange(exchanged_code).get_json()
+        pending_code = parse_qs(urlsplit(self.authorize(state="pending-state").location).query)["code"][0]
+
+        with patch.object(sso, "_dispatch_backchannel"):
+            revoked = sso.revoke_user_sessions(user_id)
+
+        self.assertEqual(revoked, 1)
+        self.assertEqual(self.client.get("/sso/userinfo", headers={"Authorization": f"Bearer {tokens['access_token']}"}).status_code, 401)
+        self.assertEqual(self.exchange(pending_code).get_json()["error"], "invalid_grant")
+
     def test_anonymous_authorization_resumes_after_medpark_one_login(self):
         first = self.authorize()
         self.assertEqual(first.status_code, 302)
