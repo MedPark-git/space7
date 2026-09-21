@@ -323,10 +323,12 @@ class PortalSmokeTest(unittest.TestCase):
         )
         self.assertEqual(unchanged.status_code, 400)
 
-        changed = primary.post(
-            "/api/auth/password",
-            json={"current_password": old_password, "new_password": new_password, "new_password_confirm": new_password},
-        )
+        with patch("app.sso_master.revoke_user_sessions") as revoke_user_sessions:
+            changed = primary.post(
+                "/api/auth/password",
+                json={"current_password": old_password, "new_password": new_password, "new_password_confirm": new_password},
+            )
+            revoke_user_sessions.assert_called_once_with(user_id)
         self.assertEqual(changed.status_code, 200)
         self.assertTrue(changed.get_json()["other_sessions_revoked"])
         self.assertEqual(primary.get("/api/auth/me").status_code, 200)
