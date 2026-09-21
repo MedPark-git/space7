@@ -281,6 +281,65 @@ class PortalSmokeTest(unittest.TestCase):
         self.assertGreaterEqual(logout_logs.get_json()["total"], 1)
         self.assertEqual(self.client.get("/api/admin/audits?date_from=2026/09/03").status_code, 400)
 
+    def test_employee_can_change_own_password_and_revoke_other_sessions(self):
+        self.login()
+        old_password = "SelfPasswordOld!234"
+        new_password = "SelfPasswordNew!567"
+        created = self.client.post(
+            "/api/admin/users",
+            json={
+                "username": "self.password.employee",
+                "password": old_password,
+                "name": "본인 비밀번호 변경",
+                "department": "경영사업본부",
+                "role": "basic",
+            },
+        )
+        self.assertEqual(created.status_code, 201)
+        user_id = created.get_json()["user"]["id"]
+
+        primary = portal.test_client()
+        other_device = portal.test_client()
+        for client in (primary, other_device):
+            response = client.post("/api/auth/login", json={"username": "self.password.employee", "password": old_password})
+            self.assertEqual(response.status_code, 200)
+
+        wrong_current = primary.post(
+            "/api/auth/password",
+            json={"current_password": "WrongCurrent!234", "new_password": new_password, "new_password_confirm": new_password},
+        )
+        self.assertEqual(wrong_current.status_code, 400)
+        self.assertIn("현재 비밀번호", wrong_current.get_json()["message"])
+
+        mismatch = primary.post(
+            "/api/auth/password",
+            json={"current_password": old_password, "new_password": new_password, "new_password_confirm": "DifferentPassword!890"},
+        )
+        self.assertEqual(mismatch.status_code, 400)
+
+        unchanged = primary.post(
+            "/api/auth/password",
+            json={"current_password": old_password, "new_password": old_password, "new_password_confirm": old_password},
+        )
+        self.assertEqual(unchanged.status_code, 400)
+
+        changed = primary.post(
+            "/api/auth/password",
+            json={"current_password": old_password, "new_password": new_password, "new_password_confirm": new_password},
+        )
+        self.assertEqual(changed.status_code, 200)
+        self.assertTrue(changed.get_json()["other_sessions_revoked"])
+        self.assertEqual(primary.get("/api/auth/me").status_code, 200)
+        self.assertEqual(other_device.get("/api/auth/me").status_code, 401)
+        self.assertEqual(portal.test_client().post("/api/auth/login", json={"username": "self.password.employee", "password": old_password}).status_code, 401)
+        self.assertEqual(portal.test_client().post("/api/auth/login", json={"username": "self.password.employee", "password": new_password}).status_code, 200)
+
+        audit = self.client.get(f"/api/admin/audits?action=auth.password_changed&query={user_id}")
+        self.assertEqual(audit.status_code, 200)
+        self.assertEqual(audit.get_json()["total"], 1)
+        self.assertNotIn("password", str(audit.get_json()["items"][0]["metadata"]).lower())
+        self.assertEqual(self.client.delete(f"/api/admin/users/{user_id}").status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
