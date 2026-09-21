@@ -744,8 +744,33 @@ a { color: inherit; text-decoration: none; }
 .account-actions button { padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: white; color: #60706c; font-size: 8px; }
 .account-actions button:hover { border-color: #a9d6ca; color: var(--green-800); }
 .account-actions button.approve { border-color: #80c8b4; background: var(--green-50); color: var(--green-800); font-weight: 850; }
+.account-actions button.self-password { border-color: #8fcdbd; background: var(--green-50); color: var(--green-800); font-weight: 850; }
 .account-actions button.danger { border-color: #efcccc; color: #b54545; }
 .account-actions button.danger:hover { border-color: #d98989; background: #fff5f5; color: #9f3030; }
+.employee-summary-actions { display: flex; align-items: center; gap: 9px; }
+.employee-summary-actions .button { height: 34px; padding: 0 12px; font-size: 9px; }
+.account-settings-layout { display: grid; grid-template-columns: minmax(230px,.7fr) minmax(0,1.3fr); gap: 20px; align-items: start; }
+.account-profile-card, .account-password-card { border: 1px solid #e0e9e6; border-radius: 14px; background: white; box-shadow: 0 12px 34px rgba(14,63,53,.06); }
+.account-profile-card { padding: 25px; }
+.account-profile-avatar { width: 60px; height: 60px; display: grid; place-items: center; margin-bottom: 18px; border-radius: 18px; background: linear-gradient(145deg,var(--green-800),var(--green-600)); color: white; font-size: 24px; font-weight: 850; }
+.account-profile-card h2 { margin: 7px 0 4px; font-size: 23px; }
+.account-profile-card p { margin: 0; color: var(--muted); font-size: 10px; }
+.account-profile-card dl { display: grid; gap: 0; margin: 22px 0 0; border-top: 1px solid #e7eeec; }
+.account-profile-card dl div { display: grid; grid-template-columns: 72px minmax(0,1fr); gap: 10px; padding: 12px 0; border-bottom: 1px solid #edf2f0; }
+.account-profile-card dt { color: #85918e; font-size: 9px; }
+.account-profile-card dd { overflow-wrap: anywhere; margin: 0; color: #33423e; font-size: 10px; font-weight: 750; }
+.account-password-card { display: grid; gap: 15px; padding: 25px; }
+.account-password-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding-bottom: 15px; border-bottom: 1px solid #e7eeec; }
+.account-password-card header h2 { margin: 7px 0 4px; font-size: 20px; }
+.account-password-card header p { margin: 0; color: var(--muted); font-size: 10px; }
+.security-state { display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 999px; background: var(--green-50); color: var(--green-800); font-size: 8px; font-weight: 800; white-space: nowrap; }
+.security-state i { width: 7px; height: 7px; border-radius: 50%; background: #17a77b; box-shadow: 0 0 0 3px #d7f1e8; }
+.account-password-card > label, .account-password-grid label { display: grid; gap: 7px; color: #44534f; font-size: 10px; font-weight: 750; }
+.account-password-card input { width: 100%; height: 44px; padding: 0 50px 0 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfc; outline: none; }
+.account-password-card input:focus { border-color: var(--green-600); box-shadow: 0 0 0 3px rgba(10,155,126,.1); }
+.account-password-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.account-password-hint { margin: 0; padding: 11px 13px; border-radius: 8px; background: #f4f8f6; color: #65746f; font-size: 9px; line-height: 1.6; }
+.account-password-card footer { display: flex; justify-content: flex-end; }
 .sidebar-backdrop { display: none; }
 .mobile-only { display: none; }
 
@@ -758,6 +783,7 @@ a { color: inherit; text-decoration: none; }
   .dashboard-top-grid { grid-template-columns: minmax(0, 1fr) clamp(88px, 9vw, 106px); }
   .side-stack { grid-template-columns: 1fr 1fr; }
   .menu-admin-layout { grid-template-columns: 1fr; }
+  .account-settings-layout { grid-template-columns: 1fr; }
   .audit-filters { grid-template-columns: minmax(220px,1.5fr) repeat(2,minmax(150px,1fr)); }
   .calendar-settings-layout { grid-template-columns: 220px minmax(0,1fr); }
 }
@@ -779,6 +805,7 @@ a { color: inherit; text-decoration: none; }
   .audit-manager-heading { align-items: flex-start; }
   .audit-filters { grid-template-columns: 1fr 1fr; }
   .audit-search-field { grid-column: 1 / -1; }
+  .account-password-grid { grid-template-columns: 1fr; }
   .sidebar { position: fixed; left: 0; transform: translateX(-100%); width: 270px; transition: transform .25s ease; }
   .sidebar.open { transform: translateX(0); }
   .sidebar-backdrop.open { position: fixed; z-index: 15; inset: 0; display: block; background: rgba(3,31,26,.45); }

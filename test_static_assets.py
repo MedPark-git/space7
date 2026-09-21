@@ -72,7 +72,17 @@ class StaticAssetIntegrityTest(unittest.TestCase):
         self.assertIn("/approve", javascript)
         self.assertIn('method: "DELETE"', javascript)
         self.assertIn("관리자 직접 등록", javascript)
-        self.assertIn("20260921-sso-master1", html)
+        self.assertIn("20260921-self-password1", html)
+
+    def test_employee_self_password_interface_is_connected(self):
+        html = (PUBLIC_DIR / "index.html").read_text(encoding="utf-8")
+        javascript = (PUBLIC_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn('data-page="profile"', html)
+        self.assertIn("내 계정 · 보안 설정", javascript)
+        self.assertIn("/api/auth/password", javascript)
+        self.assertIn("current_password", javascript)
+        self.assertIn("new_password_confirm", javascript)
+        self.assertIn("다른 기기의 로그인과 연결된 SSO 세션이 종료", javascript)
 
     def test_audit_log_admin_interface_is_connected(self):
         javascript = (PUBLIC_DIR / "app.js").read_text(encoding="utf-8")

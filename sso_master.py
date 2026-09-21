@@ -564,6 +564,33 @@ def revoke_portal_session(session_token):
     return len(targets)
 
 
+def revoke_user_sessions(user_id):
+    user_id = str(user_id or "")
+    if not user_id:
+        return 0
+    targets = []
+    if core.DB_ENABLED:
+        targets = [(row["client_id"], row["sid"]) for row in core.fetchall(
+            "SELECT DISTINCT client_id,sid FROM sso_access_tokens WHERE user_id=%s AND revoked_at IS NULL",
+            (user_id,),
+        )]
+        core.execute("UPDATE sso_access_tokens SET revoked_at=now() WHERE user_id=%s AND revoked_at IS NULL", (user_id,))
+        core.execute("UPDATE sso_authorization_codes SET used_at=now() WHERE user_id=%s AND used_at IS NULL", (user_id,))
+    else:
+        with _memory_lock:
+            now = _utcnow()
+            for record in _memory_tokens.values():
+                if str(record["user_id"]) == user_id and record["revoked_at"] is None:
+                    targets.append((record["client_id"], record["sid"]))
+                    record["revoked_at"] = now
+            for record in _memory_codes.values():
+                if str(record["user_id"]) == user_id and record["used_at"] is None:
+                    record["used_at"] = now
+    if targets and signing_ready():
+        threading.Thread(target=_dispatch_backchannel, args=(targets,), daemon=True).start()
+    return len(targets)
+
+
 def install(app, require_user, require_admin, manifest_path=MANIFEST_PATH):
     if "sso_authorize" in app.view_functions:
         return

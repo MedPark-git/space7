@@ -740,6 +740,53 @@ def delete_session(token):
         _memory["sessions"].pop(hashed, None)
 
 
+def change_own_password(user_id, current_password, new_password, new_password_confirm, ip):
+    current_password = str(current_password or "")
+    new_password = str(new_password or "")
+    new_password_confirm = str(new_password_confirm or "")
+    if not current_password:
+        raise AppError("현재 비밀번호를 입력해 주세요.")
+    if len(new_password) < 8:
+        raise AppError("새 비밀번호는 8자 이상이어야 합니다.")
+    if len(new_password) > 128:
+        raise AppError("새 비밀번호는 128자 이하로 입력해 주세요.")
+    if new_password != new_password_confirm:
+        raise AppError("새 비밀번호 확인이 일치하지 않습니다.")
+
+    if DB_ENABLED:
+        with connection() as conn:
+            existing = fetchone("SELECT * FROM users WHERE id=%s FOR UPDATE", (user_id,), conn=conn)
+            if not existing or existing.get("status") != "active":
+                raise AppError("활성 계정을 찾을 수 없습니다.", 404)
+            if not verify_password(current_password, existing.get("password_hash")):
+                raise AppError("현재 비밀번호가 일치하지 않습니다.")
+            if verify_password(new_password, existing.get("password_hash")):
+                raise AppError("현재 비밀번호와 다른 새 비밀번호를 입력해 주세요.")
+            row = execute(
+                "UPDATE users SET password_hash=%s,password_changed_at=now(),updated_at=now() WHERE id=%s RETURNING *",
+                (hash_password(new_password), user_id),
+                conn=conn,
+            )
+            execute("DELETE FROM portal_sessions WHERE user_id=%s", (user_id,), conn=conn)
+    else:
+        existing = find_user_by_id(user_id)
+        if not existing or existing.get("status") != "active":
+            raise AppError("활성 계정을 찾을 수 없습니다.", 404)
+        if not verify_password(current_password, existing.get("password_hash")):
+            raise AppError("현재 비밀번호가 일치하지 않습니다.")
+        if verify_password(new_password, existing.get("password_hash")):
+            raise AppError("현재 비밀번호와 다른 새 비밀번호를 입력해 주세요.")
+        changed_at = datetime.now(timezone.utc)
+        existing.update({"password_hash": hash_password(new_password), "password_changed_at": changed_at, "updated_at": changed_at})
+        row = existing
+        for key, item in list(_memory["sessions"].items()):
+            if item["user_id"] == str(user_id):
+                _memory["sessions"].pop(key, None)
+
+    write_audit(user_id, "auth.password_changed", "user", str(user_id), {"other_sessions_revoked": True}, ip)
+    return public_user(row)
+
+
 def menu_config():
     if DB_ENABLED:
         labels = {row["menu_id"]: row["label"] for row in fetchall("SELECT menu_id,label FROM portal_menu_labels")}

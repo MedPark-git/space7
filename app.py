@@ -124,6 +124,32 @@ def me():
     return json_response({"user": core.public_user(current_user())})
 
 
+@portal.post("/api/auth/password")
+def change_password():
+    user = current_user()
+    data = payload()
+    updated_user = core.change_own_password(
+        user["id"],
+        data.get("current_password"),
+        data.get("new_password"),
+        data.get("new_password_confirm"),
+        request_ip(),
+    )
+    sso_master.revoke_user_sessions(user["id"])
+    new_session_token = core.create_session(user["id"])
+    response = json_response({"success": True, "user": updated_user, "other_sessions_revoked": True})
+    response.set_cookie(
+        core.SESSION_COOKIE,
+        new_session_token,
+        max_age=int(core.SESSION_TTL.total_seconds()),
+        httponly=True,
+        secure=secure_request(),
+        samesite="Lax",
+        path="/",
+    )
+    return response
+
+
 @portal.post("/api/auth/register")
 def register():
     core.ensure_database_ready()
