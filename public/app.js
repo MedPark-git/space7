@@ -1,4 +1,4 @@
-import { renderSSOPreparation } from "./sso-settings.js?v=20260916-sso-preparation1";
+import { renderSSOMaster } from "./sso-settings.js?v=20260921-sso-master1";
 
 const menuGroups = [
   { id: "workspace", label: "WORKSPACE", items: [
@@ -778,6 +778,10 @@ loginForm.addEventListener("submit", async (event) => {
     if (!response.ok) throw new Error(result.message);
     currentUser = result.user;
     sessionStorage.setItem("medpark-preview-session", JSON.stringify(result.user));
+    if (new URLSearchParams(location.search).get("sso") === "login") {
+      location.replace("/sso/resume");
+      return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 350));
     closeLogin();
     await showApp();
@@ -1275,7 +1279,7 @@ const renderAdminTab = (tab) => {
   }
   addButton.hidden = true;
   if (tab === "sso") {
-    renderSSOPreparation(body);
+    renderSSOMaster(body);
     return;
   }
   if (tab === "menus") {
@@ -1877,10 +1881,20 @@ if (location.protocol === "file:" && new URLSearchParams(location.search).get("m
     const result = await response.json();
     currentUser = result.user;
     sessionStorage.setItem("medpark-preview-session", JSON.stringify(result.user));
+    if (new URLSearchParams(location.search).get("sso") === "login") {
+      location.replace("/sso/resume");
+      return;
+    }
     await showApp();
   }).catch(() => {
     sessionStorage.removeItem("medpark-preview-session");
     guestView.hidden = false;
     appView.hidden = true;
+    const ssoState = new URLSearchParams(location.search).get("sso");
+    if (ssoState === "login") openLogin();
+    if (ssoState === "expired" || ssoState === "invalid") {
+      showToast(ssoState === "expired" ? "통합 로그인 요청이 만료되었습니다. 연결 사이트에서 다시 시도해 주세요." : "통합 로그인 요청을 확인할 수 없습니다.");
+      history.replaceState({}, "", location.pathname);
+    }
   });
 }
