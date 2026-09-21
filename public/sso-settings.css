@@ -6,6 +6,10 @@
 .sso-preparation .sso-heading p, .sso-preparation .sso-footnote { color: #526277; }
 .sso-preparation .sso-notice { padding: 18px 20px; margin: 22px 0; background: #eef5ff; border: 1px solid #bdcfea; border-radius: 12px; }
 .sso-preparation .sso-notice strong { display: block; margin-bottom: 6px; font-size: 16px; color: #163f75; }
+.sso-preparation .sso-notice.ready { background: #eef9f5; border-color: #b9ded0; }
+.sso-preparation .sso-notice.ready strong { color: #12604b; }
+.sso-preparation .sso-notice.warning { background: #fff8e8; border-color: #ead39b; }
+.sso-preparation .sso-notice.warning strong { color: #7c5700; }
 .sso-preparation .sso-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .sso-preparation .sso-summary > div { padding: 18px; border: 1px solid #dfe5ec; border-radius: 12px; background: #fff; }
 .sso-preparation .sso-summary span { display: block; font-size: 13px; color: #526277; }
@@ -20,7 +24,10 @@
 .sso-preparation .sso-site-url { overflow-wrap: anywhere; max-width: 340px; }
 .sso-preparation .sso-badge { display: inline-block; padding: 4px 9px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .sso-preparation .sso-badge.prepared { background: #edf4ff; color: #24548c; }
+.sso-preparation .sso-badge.master { background: #e7f7f2; color: #0d6a51; }
+.sso-preparation .sso-badge.attention { background: #fff2d6; color: #765000; }
 .sso-preparation .sso-badge.reserved { background: #f0f2f5; color: #566175; }
+.sso-preparation .sso-deploy-warning { color: #9b3b2d !important; font-weight: 600; }
 .sso-preparation details { margin-top: 10px; min-width: 150px; }
 .sso-preparation summary { cursor: pointer; color: #4d5e75; }
 .sso-preparation details ul { margin: 10px 0 0; padding-left: 18px; line-height: 1.7; max-width: 320px; }
