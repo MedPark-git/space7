@@ -72,7 +72,7 @@ class StaticAssetIntegrityTest(unittest.TestCase):
         self.assertIn("/approve", javascript)
         self.assertIn('method: "DELETE"', javascript)
         self.assertIn("관리자 직접 등록", javascript)
-        self.assertIn("20260923-sidebar-themes1", html)
+        self.assertIn("20260923-mobile-calendar1", html)
 
     def test_employee_self_password_interface_is_connected(self):
         html = (PUBLIC_DIR / "index.html").read_text(encoding="utf-8")
@@ -93,6 +93,22 @@ class StaticAssetIntegrityTest(unittest.TestCase):
         for theme in ("navy", "cobalt", "stone", "indigo", "warm"):
             self.assertIn(f'id: "{theme}"', javascript)
             self.assertIn(f'[data-sidebar-theme="{theme}"]', styles)
+
+    def test_mobile_calendar_shows_all_schedule_details(self):
+        javascript = (PUBLIC_DIR / "app.js").read_text(encoding="utf-8")
+        styles = (PUBLIC_DIR / "styles.css").read_text(encoding="utf-8")
+        self.assertIn('class="mobile-event-count"', javascript)
+        self.assertIn(".mobile-event-count { display: none; }", styles)
+        self.assertIn(".calendar-page .schedule-list { max-height: none; overflow: visible; }", styles)
+        self.assertIn(".calendar-page .main-calendar-view { height: auto; min-height: 0; }", styles)
+        self.assertIn(".calendar-grid .selected-day .mobile-event-count", styles)
+
+    def test_mobile_dialogs_and_admin_forms_do_not_clip(self):
+        styles = (PUBLIC_DIR / "styles.css").read_text(encoding="utf-8")
+        sso_styles = (PUBLIC_DIR / "sso-settings.css").read_text(encoding="utf-8")
+        self.assertIn("max-height: calc(100dvh - 20px)", styles)
+        self.assertIn(".menu-edit-entry { align-items: stretch; flex-direction: column; }", styles)
+        self.assertIn("@media (max-width: 480px)", sso_styles)
 
     def test_audit_log_admin_interface_is_connected(self):
         javascript = (PUBLIC_DIR / "app.js").read_text(encoding="utf-8")
