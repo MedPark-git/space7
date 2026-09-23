@@ -342,6 +342,27 @@ class PortalSmokeTest(unittest.TestCase):
         self.assertNotIn("password", str(audit.get_json()["items"][0]["metadata"]).lower())
         self.assertEqual(self.client.delete(f"/api/admin/users/{user_id}").status_code, 200)
 
+    def test_employee_sidebar_theme_is_personal_and_defaults_to_cobalt(self):
+        self.login()
+        before = self.client.get("/api/auth/me")
+        self.assertEqual(before.status_code, 200)
+        self.assertEqual(before.get_json()["user"]["sidebar_theme"], "cobalt")
+
+        invalid = self.client.patch("/api/auth/preferences", json={"sidebar_theme": "green"})
+        self.assertEqual(invalid.status_code, 400)
+
+        changed = self.client.patch("/api/auth/preferences", json={"sidebar_theme": "indigo"})
+        self.assertEqual(changed.status_code, 200)
+        self.assertEqual(changed.get_json()["user"]["sidebar_theme"], "indigo")
+        self.assertEqual(self.client.get("/api/auth/me").get_json()["user"]["sidebar_theme"], "indigo")
+
+        audit = self.client.get("/api/admin/audits?action=user.sidebar_theme.update")
+        self.assertEqual(audit.status_code, 200)
+        self.assertGreaterEqual(audit.get_json()["total"], 1)
+
+        reset = self.client.patch("/api/auth/preferences", json={"sidebar_theme": "cobalt"})
+        self.assertEqual(reset.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
