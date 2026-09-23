@@ -79,6 +79,7 @@ const AUDIT_ACTION_LABELS = Object.freeze({
   "user.update": "임직원 계정 변경",
   "user.delete": "임직원 계정 삭제",
   "user.quick_links.update": "자주 찾는 시스템 변경",
+  "user.sidebar_theme.update": "사이드바 테마 변경",
   "menu.config.update": "메뉴 설정 변경",
   "menu.item.create": "메뉴 등록",
   "menu.item.delete": "메뉴 삭제",
@@ -92,6 +93,19 @@ const AUDIT_ACTION_LABELS = Object.freeze({
   "plaud_device.meeting.receive": "PLAUD 기기 회의록 수신",
   "plaud_device.meeting.delete": "PLAUD 기기 회의록 삭제"
 });
+const SIDEBAR_THEME_OPTIONS = Object.freeze([
+  { id: "navy", name: "네이비 코퍼레이트", description: "신뢰감 있는 진한 네이비", colors: ["#142b4a", "#244b78", "#65a9e8"] },
+  { id: "cobalt", name: "차콜 코발트", description: "선명하고 현대적인 기본 테마", colors: ["#20252d", "#315efb", "#9ab6ff"] },
+  { id: "stone", name: "라이트 스톤", description: "밝고 편안한 라이트 메뉴", colors: ["#f4f5f7", "#263852", "#d7dde7"] },
+  { id: "indigo", name: "미드나잇 인디고", description: "세련된 인디고 그라데이션", colors: ["#17152e", "#5146a5", "#c5bdf5"] },
+  { id: "warm", name: "웜 그래파이트", description: "따뜻한 고급감의 그래파이트", colors: ["#292724", "#a9622d", "#e5b47a"] },
+]);
+const validSidebarTheme = (value) => SIDEBAR_THEME_OPTIONS.some((theme) => theme.id === value) ? value : "cobalt";
+const applySidebarTheme = (value) => {
+  const theme = validSidebarTheme(value);
+  appView.dataset.sidebarTheme = theme;
+  return theme;
+};
 const CALENDAR_EVENT_CACHE_MS = 5 * 60 * 1000;
 const calendarEventCache = new Map();
 const calendarEventRequests = new Map();
@@ -1201,6 +1215,7 @@ const renderDashboard = () => {
 
 const renderProfile = () => {
   const roleLabel = currentUser?.role === "admin" ? "관리자" : "임직원";
+  const selectedTheme = validSidebarTheme(currentUser?.sidebar_theme);
   pageContent.innerHTML = `
     <section class="page-heading"><div><span class="eyebrow">MY ACCOUNT</span><h1>내 계정 · 보안 설정</h1><p>본인 계정 정보를 확인하고 로그인 비밀번호를 안전하게 변경합니다.</p></div></section>
     <section class="account-settings-layout">
@@ -1220,6 +1235,17 @@ const renderProfile = () => {
         <p id="selfPasswordError" class="form-error"></p>
         <footer><button type="submit" class="button primary">내 비밀번호 변경</button></footer>
       </form>
+      <form id="sidebarThemeForm" class="sidebar-theme-card">
+        <header><div><span class="eyebrow">PERSONAL APPEARANCE</span><h2>왼쪽 카테고리 색상</h2><p>선택한 디자인은 내 계정에 저장되어 다른 기기에서도 동일하게 적용됩니다.</p></div><span class="theme-default-badge">기본 · 차콜 코발트</span></header>
+        <div class="sidebar-theme-options">${SIDEBAR_THEME_OPTIONS.map((theme) => `
+          <label class="sidebar-theme-option">
+            <input type="radio" name="sidebar_theme" value="${theme.id}" ${theme.id === selectedTheme ? "checked" : ""} />
+            <span class="sidebar-theme-preview" data-theme-preview="${theme.id}"><i></i><i></i><i></i><b></b></span>
+            <span><b>${theme.name}</b><small>${theme.description}</small><em>${theme.colors.map((color) => `<i style="--theme-color:${color}"></i>`).join("")}</em></span>
+          </label>`).join("")}</div>
+        <p id="sidebarThemeError" class="form-error"></p>
+        <footer><small>테마를 선택하면 즉시 미리 적용됩니다.</small><button id="sidebarThemeSubmit" type="submit" class="button primary">선택한 테마 저장</button></footer>
+      </form>
     </section>`;
 
   $$('[data-password-toggle]').forEach((button) => button.addEventListener("click", () => {
@@ -1228,6 +1254,40 @@ const renderProfile = () => {
     button.textContent = input.type === "password" ? "보기" : "숨김";
   }));
   $("#selfPasswordForm").addEventListener("submit", changeOwnPassword);
+  $("#sidebarThemeForm").addEventListener("change", (event) => {
+    if (event.target.name === "sidebar_theme") applySidebarTheme(event.target.value);
+  });
+  $("#sidebarThemeForm").addEventListener("submit", saveSidebarTheme);
+};
+
+const saveSidebarTheme = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submit = $("#sidebarThemeSubmit");
+  const selected = form.elements.sidebar_theme.value;
+  const previous = validSidebarTheme(currentUser?.sidebar_theme);
+  $("#sidebarThemeError").textContent = "";
+  submit.disabled = true;
+  try {
+    const response = await fetch("/api/auth/preferences", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sidebar_theme: selected }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    currentUser = result.user;
+    applySidebarTheme(result.user.sidebar_theme);
+    sessionStorage.setItem("medpark-preview-session", JSON.stringify(result.user));
+    showToast(`${SIDEBAR_THEME_OPTIONS.find((theme) => theme.id === result.user.sidebar_theme)?.name || "선택한"} 테마가 저장되었습니다.`);
+  } catch (error) {
+    applySidebarTheme(previous);
+    const previousInput = form.querySelector(`[name="sidebar_theme"][value="${previous}"]`);
+    if (previousInput) previousInput.checked = true;
+    $("#sidebarThemeError").textContent = error.message || "테마 저장에 실패했습니다.";
+  } finally {
+    submit.disabled = false;
+  }
 };
 
 const changeOwnPassword = async (event) => {
@@ -1918,6 +1978,7 @@ const setupSearch = () => {
 $("#noticeButton").addEventListener("click", () => showToast("읽지 않은 알림이 3개 있습니다."));
 
 const showApp = async () => {
+  applySidebarTheme(currentUser?.sidebar_theme);
   guestView.hidden = true;
   appView.hidden = false;
   const bootstrapData = Promise.allSettled([loadMenuConfig(), loadQuickLinks()]);

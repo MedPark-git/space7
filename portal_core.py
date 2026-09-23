@@ -24,6 +24,8 @@ SESSION_COOKIE = "medpark_session"
 SESSION_TTL = timedelta(hours=12)
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{4,30}$")
 EMPLOYEE_DEPARTMENTS = ("경영사업본부", "마케팅사업본부", "기술사업본부")
+SIDEBAR_THEMES = ("navy", "cobalt", "stone", "indigo", "warm")
+DEFAULT_SIDEBAR_THEME = "cobalt"
 DB_ENABLED = bool(psycopg2) and all(os.environ.get(k) for k in ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"))
 
 _database_state_lock = threading.Lock()
@@ -88,7 +90,9 @@ def public_user(row):
         "id": str(row["id"]), "username": row["username"], "email": row.get("email") or "",
         "name": row["name"], "employee_no": row.get("employee_no") or "",
         "department": row.get("department") or "", "role": row["role"],
-        "status": row["status"], "created_at": iso(row.get("created_at")),
+        "status": row["status"],
+        "sidebar_theme": row.get("sidebar_theme") if row.get("sidebar_theme") in SIDEBAR_THEMES else DEFAULT_SIDEBAR_THEME,
+        "created_at": iso(row.get("created_at")),
     }
 
 
@@ -203,6 +207,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz NOT N
 ALTER TABLE users ADD COLUMN IF NOT EXISTS terminated_at timestamptz;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 ALTER TABLE users ADD COLUMN IF NOT EXISTS department varchar(150);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sidebar_theme varchar(32) NOT NULL DEFAULT 'cobalt';
 ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users (lower(username)) WHERE username IS NOT NULL;
 CREATE TABLE IF NOT EXISTS portal_sessions (
@@ -998,6 +1003,26 @@ def update_quick_links(data, user, ip):
         _memory["quick"][str(user["id"])] = ids
     write_audit(user["id"], "user.quick_links.update", "user", str(user["id"]), {"system_ids": ids}, ip)
     return get_quick_links(user["id"])
+
+
+def update_user_preferences(data, user, ip):
+    theme = str(data.get("sidebar_theme") or "").strip().lower()
+    if theme not in SIDEBAR_THEMES:
+        raise AppError("사이드바 테마를 다시 선택해 주세요.")
+    if DB_ENABLED:
+        row = execute(
+            "UPDATE users SET sidebar_theme=%s,updated_at=now() WHERE id=%s RETURNING *",
+            (theme, user["id"]),
+        )
+    else:
+        existing = find_user_by_id(user["id"])
+        if not existing:
+            raise AppError("계정을 찾을 수 없습니다.", 404)
+        existing["sidebar_theme"] = theme
+        existing["updated_at"] = datetime.now(timezone.utc)
+        row = existing
+    write_audit(user["id"], "user.sidebar_theme.update", "user", str(user["id"]), {"sidebar_theme": theme}, ip)
+    return public_user(row)
 
 
 def _create_user(data, role, status):

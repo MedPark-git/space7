@@ -72,7 +72,7 @@ class StaticAssetIntegrityTest(unittest.TestCase):
         self.assertIn("/approve", javascript)
         self.assertIn('method: "DELETE"', javascript)
         self.assertIn("관리자 직접 등록", javascript)
-        self.assertIn("20260921-self-password1", html)
+        self.assertIn("20260923-sidebar-themes1", html)
 
     def test_employee_self_password_interface_is_connected(self):
         html = (PUBLIC_DIR / "index.html").read_text(encoding="utf-8")
@@ -83,6 +83,16 @@ class StaticAssetIntegrityTest(unittest.TestCase):
         self.assertIn("current_password", javascript)
         self.assertIn("new_password_confirm", javascript)
         self.assertIn("다른 기기의 로그인과 연결된 SSO 세션이 종료", javascript)
+
+    def test_personal_sidebar_theme_selector_is_connected(self):
+        html = (PUBLIC_DIR / "index.html").read_text(encoding="utf-8")
+        javascript = (PUBLIC_DIR / "app.js").read_text(encoding="utf-8")
+        styles = (PUBLIC_DIR / "styles.css").read_text(encoding="utf-8")
+        self.assertIn('data-sidebar-theme="cobalt"', html)
+        self.assertIn("/api/auth/preferences", javascript)
+        for theme in ("navy", "cobalt", "stone", "indigo", "warm"):
+            self.assertIn(f'id: "{theme}"', javascript)
+            self.assertIn(f'[data-sidebar-theme="{theme}"]', styles)
 
     def test_audit_log_admin_interface_is_connected(self):
         javascript = (PUBLIC_DIR / "app.js").read_text(encoding="utf-8")

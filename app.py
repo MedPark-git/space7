@@ -160,6 +160,12 @@ def register():
     }, 201)
 
 
+@portal.patch("/api/auth/preferences")
+def preferences_patch():
+    user = current_user()
+    return json_response({"user": core.update_user_preferences(payload(), user, request_ip())})
+
+
 @portal.get("/api/menu")
 def menu_get():
     current_user()
